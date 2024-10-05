@@ -30,6 +30,7 @@ async def main():
 
     # create an agent
     ai_agent = DMAioAIAgent(system_message, tools, model=model_name)
+    # you can set input_output_logging=False, if you don't want to see the input and output messages from agent
 
     # define the conversation messages
     messages = [
@@ -41,11 +42,9 @@ async def main():
     # start the agent
     state = await ai_agent.run(messages)
 
-    # print answer
-    print(state["answer"])
-
     # if you define tools, you can see the context of the tools
-    print(state["answer"])
+    answer = state["answer"]
+    print(state["context"])
 
 
 if __name__ == "__main__":
