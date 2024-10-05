@@ -9,8 +9,6 @@
 
 ## Usage
 
-### Example of using DMAioAIAgent without tools
-
 Analogue to `DMAioAIAgent` is the synchronous client `DMAIAgent`.
 
 ```python
