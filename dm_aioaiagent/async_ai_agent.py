@@ -1,21 +1,25 @@
 import json
 import sys
 import asyncio
+from typing import Union
 from langchain_core.messages import ToolMessage
 
-from .ai_agent import DMAIAgent, InputState, OutputState
-
-__all__ = ["DMAioAIAgent"]
+from .ai_agent import DMAIAgent, InputState, OutputState, Message
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+__all__ = ["DMAioAIAgent"]
 
 
 class DMAioAIAgent(DMAIAgent):
     agent_name = "AsyncAIAgent"
 
-    async def run(self, messages: list[dict[str, str]]) -> OutputState:
-        return await self._graph.ainvoke({"messages": messages})
+    async def run(self, messages: list[Message]) -> Union[str, OutputState]:
+        state = await self._graph.ainvoke({"messages": messages})
+        if self._return_context:
+            return state
+        return state["answer"]
 
     async def _invoke_llm_node(self, state: InputState) -> InputState:
         self._logger.debug("Run node: Invoke LLM")

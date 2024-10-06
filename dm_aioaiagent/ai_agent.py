@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from threading import Thread
@@ -46,13 +46,15 @@ class DMAIAgent:
         model: str = "gpt-4o-mini",
         temperature: int = 1,
         agent_name: str = None,
-        input_output_logging: bool = True
+        input_output_logging: bool = True,
+        return_context: bool = False
     ):
         if not os.getenv("OPENAI_API_KEY"):
             raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")
 
         self._logger = DMLogger(agent_name or self.agent_name)
         self._input_output_logging = input_output_logging
+        self._return_context = return_context
         self._is_tools_exists = bool(tools)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
@@ -78,8 +80,11 @@ class DMAIAgent:
         workflow.set_finish_point("Exit")
         self._graph = workflow.compile()
 
-    def run(self, messages: list[Message]) -> OutputState:
-        return self._graph.invoke({"messages": messages})
+    def run(self, messages: list[Message]) -> Union[str, OutputState]:
+        state = self._graph.invoke({"messages": messages})
+        if self._return_context:
+            return state
+        return state["answer"]
 
     def _prepare_messages_node(self, state: InputState) -> InputState:
         state.messages = state.messages or [{"role": "user", "content": "Привіт"}]

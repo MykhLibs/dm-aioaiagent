@@ -20,7 +20,7 @@ async def main():
     # define a system message
     system_message = "Your custom system message with role, backstory and goal"
 
-    # define a list of tools, if you want to use them
+    # (optional) define a list of tools, if you want to use them
     tools = [...]
 
     # define a openai model, default is "gpt-4o-mini"
@@ -28,7 +28,39 @@ async def main():
 
     # create an agent
     ai_agent = DMAioAIAgent(system_message, tools, model=model_name)
-    # you can set input_output_logging=False, if you don't want to see the input and output messages from agent
+    # if you don't want to see the input and output messages from agent
+    # you can set input_output_logging=False
+
+    # define the conversation messages
+    messages = [
+       {"role": "user", "content": "Hello!"},
+       {"role": "ai", "content": "How can I help you?"},
+       {"role": "user", "content": "I want to know the weather in Kyiv"},
+    ]
+
+    # call an agent
+    answer = await ai_agent.run(messages)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Return context of the tools with answer
+```python
+import asyncio
+from dm_aioaiagent import DMAioAIAgent
+
+
+async def main():
+    # define a system message
+    system_message = "Your custom system message with role, backstory and goal"
+
+    # define a list of tools, if you want to use them
+    tools = [...]
+
+    # create an agent
+    ai_agent = DMAioAIAgent(system_message, tools, return_context=True)
 
     # define the conversation messages
     messages = [
@@ -42,7 +74,7 @@ async def main():
 
     # if you define tools, you can see the context of the tools
     answer = state["answer"]
-    print(state["context"])
+    context = state["context"]
 
 
 if __name__ == "__main__":
@@ -72,7 +104,7 @@ class MyLogger:
         print(message)
 
 
-# create agent
+# create an agent
 ai_agent = DMAioAIAgent()
 
 # set up custom logger for this agent
