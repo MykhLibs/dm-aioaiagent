@@ -1,4 +1,4 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
@@ -9,16 +9,12 @@ class Message(TypedDict):
     content: str
 
 
-class InnerState(BaseModel):
-    messages: list[BaseMessage] = Field(default=[])
-    context: list[Message] = Field(default=[])
+InputMessagesType = list[Union[Message, BaseMessage]]
+ResponseType = Union[str, list[BaseMessage]]
 
 
-class InputState(BaseModel):
-    messages: list[Message]
-    inner_state: Optional[InnerState] = Field(default=InnerState())
-
-
-class OutputState(TypedDict):
-    answer: str
-    context: list[Message]
+class State(BaseModel):
+    input_messages: InputMessagesType
+    input_messages_count: int = Field(default=1)
+    messages: Optional[list[BaseMessage]] = Field(default_factory=list)
+    response: ResponseType = Field(default_factory=str)
