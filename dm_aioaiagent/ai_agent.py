@@ -1,37 +1,17 @@
-import json
 import os
-from typing import Optional, Literal, Union
-from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
+import json
+from typing import Union
 from threading import Thread
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph
 from dm_logger import DMLogger
 
+from .types import *
+
 __all__ = ["DMAIAgent"]
-
-
-class Message(TypedDict):
-    role: Literal["user", "ai"]
-    content: str
-
-
-class InnerState(BaseModel):
-    messages: list[BaseMessage] = Field(default=[])
-    context: list[Message] = Field(default=[])
-
-
-class InputState(BaseModel):
-    messages: list[Message]
-    inner_state: Optional[InnerState] = Field(default=InnerState())
-
-
-class OutputState(TypedDict):
-    answer: str
-    context: list[Message]
 
 
 class DMAIAgent:
@@ -87,7 +67,7 @@ class DMAIAgent:
         return state["answer"]
 
     def _prepare_messages_node(self, state: InputState) -> InputState:
-        state.messages = state.messages or [{"role": "user", "content": "Привіт"}]
+        state.messages = state.messages or [{"role": "user", "content": ""}]
         state.inner_state = InnerState()
         if self._input_output_logging:
             self._logger.debug(input_messages=state.messages)

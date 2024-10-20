@@ -4,7 +4,8 @@ import asyncio
 from typing import Union
 from langchain_core.messages import ToolMessage
 
-from .ai_agent import DMAIAgent, InputState, OutputState, Message
+from .ai_agent import DMAIAgent
+from .types import *
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
