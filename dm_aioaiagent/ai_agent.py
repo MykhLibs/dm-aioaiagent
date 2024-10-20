@@ -1,4 +1,5 @@
 import os
+from itertools import dropwhile
 from threading import Thread
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
@@ -15,6 +16,7 @@ __all__ = ["DMAIAgent"]
 class DMAIAgent:
     agent_name = "AIAgent"
     _allowed_roles = ("user", "ai")
+    MAX_MEMORY_MESSAGES = 20 # Only INT greater than 0
 
     def __init__(
         self,
@@ -25,7 +27,8 @@ class DMAIAgent:
         temperature: int = 1,
         agent_name: str = None,
         input_output_logging: bool = True,
-        is_memory_enabled: bool = True
+        is_memory_enabled: bool = True,
+        max_memory_messages: int = None,
     ):
         if not os.getenv("OPENAI_API_KEY"):
             raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
@@ -34,6 +37,7 @@ class DMAIAgent:
         self._is_tools_exists = bool(tools)
         self._input_output_logging = bool(input_output_logging)
         self._is_memory_enabled = bool(is_memory_enabled)
+        self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
@@ -136,7 +140,9 @@ class DMAIAgent:
             self._logger.debug(f"Answer:\n{answer}", memory_id=state.memory_id)
 
         if self._is_memory_enabled:
-            self._memory[state.memory_id] = state.messages
+            messages_to_memory = state.messages[-self._max_memory_messages:]
+            # drop ToolsMessages from start of list
+            self._memory[state.memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
             state.response = answer
         else:
             state.response = state.messages[len(state.input_messages):]
@@ -152,6 +158,12 @@ class DMAIAgent:
     @staticmethod
     def _validate_memory_id(memory_id: Union[str, None]) -> Union[str, int]:
         return str(memory_id) if memory_id else 0
+
+    @classmethod
+    def _validate_max_memory_messages(cls, max_messages_in_memory: int) -> int:
+        if isinstance(max_messages_in_memory, int) and max_messages_in_memory > 0:
+            return max_messages_in_memory
+        return cls.MAX_MEMORY_MESSAGES
 
     def print_graph(self) -> None:
         self._graph.get_graph().print_ascii()

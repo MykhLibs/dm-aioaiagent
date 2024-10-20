@@ -15,6 +15,8 @@ Analogue to `DMAioAIAgent` is the synchronous client `DMAIAgent`.
 
 By default, agent use inner memory to store the conversation history.
 
+(You can set *max count messages in memory* by `max_memory_messages` init argument)
+
 ```python
 import asyncio
 from dm_aioaiagent import DMAioAIAgent
@@ -33,7 +35,7 @@ async def main():
     # create an agent
     ai_agent = DMAioAIAgent(system_message, tools, model=model_name)
     # if you don't want to see the input and output messages from agent
-    # you can set input_output_logging=False
+    # you can set `input_output_logging=False` init argument
 
     # define the conversation message
     input_messages = [
@@ -41,7 +43,7 @@ async def main():
     ]
 
     # call an agent
-    # specify 'memory_id' argument to store the conversation history by your custom id
+    # specify `memory_id` argument to store the conversation history by your custom id
     answer = await ai_agent.run(input_messages)
 
     # define the next conversation message
