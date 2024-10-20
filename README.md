@@ -11,6 +11,10 @@
 
 Analogue to `DMAioAIAgent` is the synchronous client `DMAIAgent`.
 
+### Use agent *with* inner memory
+
+By default, agent use inner memory to store the conversation history.
+
 ```python
 import asyncio
 from dm_aioaiagent import DMAioAIAgent
@@ -31,22 +35,38 @@ async def main():
     # if you don't want to see the input and output messages from agent
     # you can set input_output_logging=False
 
-    # define the conversation messages
-    messages = [
-       {"role": "user", "content": "Hello!"},
-       {"role": "ai", "content": "How can I help you?"},
-       {"role": "user", "content": "I want to know the weather in Kyiv"},
+    # define the conversation message
+    input_messages = [
+        {"role": "user", "content": "Hello!"},
     ]
 
     # call an agent
-    answer = await ai_agent.run(messages)
+    # specify 'memory_id' argument to store the conversation history by your custom id
+    answer = await ai_agent.run(input_messages)
+
+    # define the next conversation message
+    input_messages = [
+        {"role": "user", "content": "I want to know the weather in Kyiv"}
+    ]
+
+    # call an agent
+    answer = await ai_agent.run(input_messages)
+
+    # get full conversation history
+    conversation_history = ai_agent.get_memory_messages()
+
+    # clear conversation history
+    ai_agent.clear_memory()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Return context of the tools with answer
+### Use agent *without* inner memory
+
+If you want to control the memory of the agent, you can disable it by setting `is_memory_enabled=False`
+
 ```python
 import asyncio
 from dm_aioaiagent import DMAioAIAgent
@@ -56,25 +76,36 @@ async def main():
     # define a system message
     system_message = "Your custom system message with role, backstory and goal"
 
-    # define a list of tools, if you want to use them
+    # (optional) define a list of tools, if you want to use them
     tools = [...]
 
-    # create an agent
-    ai_agent = DMAioAIAgent(system_message, tools, return_context=True)
+    # define a openai model, default is "gpt-4o-mini"
+    model_name = "gpt-4o"
 
-    # define the conversation messages
+    # create an agent
+    ai_agent = DMAioAIAgent(system_message, tools, model=model_name,
+                            is_memory_enabled=False)
+    # if you don't want to see the input and output messages from agent
+    # you can set input_output_logging=False
+
+    # define the conversation message
     messages = [
-       {"role": "user", "content": "Hello!"},
-       {"role": "ai", "content": "How can I help you?"},
-       {"role": "user", "content": "I want to know the weather in Kyiv"},
+        {"role": "user", "content": "Hello!"}
     ]
 
-    # start the agent
-    state = await ai_agent.run(messages)
+    # call an agent
+    new_messages = await ai_agent.run(messages)
 
-    # if you define tools, you can see the context of the tools
-    answer = state["answer"]
-    context = state["context"]
+    # add new_messages to messages
+    messages.extend(new_messages)
+
+    # define the next conversation message
+    messages.append(
+        {"role": "user", "content": "I want to know the weather in Kyiv"}
+    )
+
+    # call an agent
+    new_messages = await ai_agent.run(messages)
 
 
 if __name__ == "__main__":
