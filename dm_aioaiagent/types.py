@@ -15,6 +15,6 @@ ResponseType = Union[str, list[BaseMessage]]
 
 class State(BaseModel):
     input_messages: InputMessagesType
-    input_messages_count: int = Field(default=1)
+    memory_id: Union[str, int, None] = Field(default=0)
     messages: Optional[list[BaseMessage]] = Field(default_factory=list)
-    response: ResponseType = Field(default_factory=str)
+    response: ResponseType = Field(default="")

@@ -25,15 +25,15 @@ class DMAIAgent:
         temperature: int = 1,
         agent_name: str = None,
         input_output_logging: bool = True,
-        return_only_answer: bool = True
+        is_memory_enabled: bool = True
     ):
         if not os.getenv("OPENAI_API_KEY"):
-            raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")
+            raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
 
         self._logger = DMLogger(agent_name or self.agent_name)
-        self._input_output_logging = input_output_logging
-        self._return_only_answer = return_only_answer
         self._is_tools_exists = bool(tools)
+        self._input_output_logging = bool(input_output_logging)
+        self._is_memory_enabled = bool(is_memory_enabled)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
@@ -42,6 +42,7 @@ class DMAIAgent:
             self._tool_map = {t.name: t for t in tools}
             llm = llm.bind_tools(tools)
         self._agent = prompt | llm
+        self._memory = {}
 
         workflow = StateGraph(State)
         workflow.add_node("Prepare messages", self._prepare_messages_node)
@@ -58,16 +59,19 @@ class DMAIAgent:
         workflow.set_finish_point("Exit")
         self._graph = workflow.compile()
 
-    def run(self, messages: InputMessagesType) -> ResponseType:
-        state = self._graph.invoke({"input_messages": messages})
+    def run(self, input_messages: InputMessagesType, memory_id: str = None) -> ResponseType:
+        state = self._graph.invoke({"input_messages": input_messages, "memory_id": memory_id})
         return state["response"]
 
-    def _prepare_messages_node(self, state: State) -> State:
-        state.input_messages = state.input_messages or [{"role": "user", "content": ""}]
-        state.input_messages_count = len(state.input_messages)
-        if self._input_output_logging:
-            self._logger.debug(input_messages=state.input_messages)
+    def get_memory_messages(self, memory_id: str = None) -> list[BaseMessage]:
+        return self._memory.get(self._validate_memory_id(memory_id), [])
 
+    def clear_memory(self, memory_id: str = None) -> None:
+        self._memory[self._validate_memory_id(memory_id)] = []
+
+    def _prepare_messages_node(self, state: State) -> State:
+        state.memory_id = self._validate_memory_id(state.memory_id)
+        state.input_messages = state.input_messages or [{"role": "user", "content": ""}]
         for item in state.input_messages:
             if isinstance(item, dict):
                 role = item.get("role")
@@ -81,6 +85,11 @@ class DMAIAgent:
                 state.messages.append(MessageClass(content))
             elif isinstance(item, BaseMessage):
                 state.messages.append(item)
+
+        if self._input_output_logging:
+            self._logger.debug(f"Query:\n{state.messages[-1].content}", memory_id=state.memory_id)
+        if self._is_memory_enabled:
+            state.messages = self.get_memory_messages(state.memory_id) + state.messages
         return state
 
     def _invoke_llm_node(self, state: State) -> State:
@@ -122,10 +131,15 @@ class DMAIAgent:
         return state
 
     def _exit_node(self, state: State) -> State:
-        answer = state.messages[-1].content if state.messages else ""
+        answer = state.messages[-1].content
         if self._input_output_logging:
-            self._logger.debug(f"Answer:\n{answer}")
-        state.response = answer if self._return_only_answer else state.messages[state.input_messages_count:]
+            self._logger.debug(f"Answer:\n{answer}", memory_id=state.memory_id)
+
+        if self._is_memory_enabled:
+            self._memory[state.memory_id] = state.messages
+            state.response = answer
+        else:
+            state.response = state.messages[len(state.input_messages):]
         return state
 
     def _messages_router(self, state: State) -> str:
@@ -134,6 +148,10 @@ class DMAIAgent:
         else:
             route = "exit"
         return route
+
+    @staticmethod
+    def _validate_memory_id(memory_id: Union[str, None]) -> Union[str, int]:
+        return str(memory_id) if memory_id else 0
 
     def print_graph(self) -> None:
         self._graph.get_graph().print_ascii()

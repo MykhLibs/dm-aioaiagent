@@ -14,8 +14,8 @@ __all__ = ["DMAioAIAgent"]
 class DMAioAIAgent(DMAIAgent):
     agent_name = "AsyncAIAgent"
 
-    async def run(self, messages: InputMessagesType) -> ResponseType:
-        state = await self._graph.ainvoke({"input_messages": messages})
+    async def run(self, input_messages: InputMessagesType, memory_id: str = None) -> ResponseType:
+        state = await self._graph.ainvoke({"input_messages": input_messages, "memory_id": memory_id})
         return state["response"]
 
     async def _invoke_llm_node(self, state: State) -> State:
