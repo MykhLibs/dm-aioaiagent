@@ -1,10 +1,9 @@
-import json
 import sys
 import asyncio
-from typing import Union
 from langchain_core.messages import ToolMessage
 
-from .ai_agent import DMAIAgent, InputState, OutputState, Message
+from .ai_agent import DMAIAgent
+from .types import *
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -15,22 +14,20 @@ __all__ = ["DMAioAIAgent"]
 class DMAioAIAgent(DMAIAgent):
     agent_name = "AsyncAIAgent"
 
-    async def run(self, messages: list[Message]) -> Union[str, OutputState]:
-        state = await self._graph.ainvoke({"messages": messages})
-        if self._return_context:
-            return state
-        return state["answer"]
+    async def run(self, input_messages: InputMessagesType, memory_id: str = None) -> ResponseType:
+        state = await self._graph.ainvoke({"input_messages": input_messages, "memory_id": memory_id})
+        return state["response"]
 
-    async def _invoke_llm_node(self, state: InputState) -> InputState:
+    async def _invoke_llm_node(self, state: State) -> State:
         self._logger.debug("Run node: Invoke LLM")
-        ai_response = await self._agent.ainvoke({"messages": state.inner_state.messages})
-        state.inner_state.messages.append(ai_response)
+        ai_response = await self._agent.ainvoke({"messages": state.messages})
+        state.messages.append(ai_response)
         return state
 
-    async def _execute_tool_node(self, state: InputState) -> InputState:
+    async def _execute_tool_node(self, state: State) -> State:
         self._logger.debug("Run node: Execute tool")
         tasks = []
-        for tool_call in state.inner_state.messages[-1].tool_calls:
+        for tool_call in state.messages[-1].tool_calls:
             tool_id = tool_call["id"]
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
@@ -47,11 +44,8 @@ class DMAioAIAgent(DMAIAgent):
                     tool_response = f"Tool '{tool_name}' not found!"
                 self._logger.debug(f"Tool response:\n{tool_response}", tool_id=tool_id)
 
-                state.inner_state.context.append({"tool_name": tool_name,
-                                                  "tool_args": json.dumps(tool_args, ensure_ascii=False),
-                                                  "tool_response": tool_response})
                 tool_message = ToolMessage(content=str(tool_response), name=tool_name, tool_call_id=tool_id)
-                state.inner_state.messages.append(tool_message)
+                state.messages.append(tool_message)
 
             tasks.append(asyncio.create_task(tool_callback()))
 
