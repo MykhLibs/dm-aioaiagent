@@ -16,7 +16,7 @@ __all__ = ["DMAIAgent"]
 class DMAIAgent:
     agent_name = "AIAgent"
     _allowed_roles = ("user", "ai")
-    MAX_MEMORY_MESSAGES = 20 # Only INT greater than 0
+    MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
 
     def __init__(
         self,
@@ -67,8 +67,19 @@ class DMAIAgent:
         state = self._graph.invoke({"input_messages": input_messages, "memory_id": memory_id})
         return state["response"]
 
-    def get_memory_messages(self, memory_id: str = None) -> list[BaseMessage]:
-        return self._memory.get(self._validate_memory_id(memory_id), [])
+    def get_memory_messages(
+        self,
+        memory_id: str = None,
+        *,
+        without_tool_m: bool = False,
+        return_str_m: bool = False
+    ) -> Union[list[BaseMessage], list[str]]:
+        messages = self._memory.get(self._validate_memory_id(memory_id), [])
+        if without_tool_m:
+            messages = [m for m in messages if not (m.type == "tool" or (m.type == "ai" and m.tool_calls))]
+        if return_str_m:
+            messages = [m.content for m in messages]
+        return messages
 
     def clear_memory(self, memory_id: str = None) -> None:
         self._memory[self._validate_memory_id(memory_id)] = []
