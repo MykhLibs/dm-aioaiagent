@@ -23,6 +23,7 @@ setup(
         'langchain~=0.3.0',
         'langchain-core~=0.3.5',
         'langgraph~=0.2.23',
+        'grandalf>=0.8',
         'langchain-community~=0.3.0',
         'langchain-openai~=0.2.0',
     ],
