@@ -4,12 +4,33 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 
 
-class Message(TypedDict):
+class ImageMessageTextMessage(TypedDict):
+    type: Literal['text']
+    text: str
+
+
+class ImageMessageImageItem(TypedDict):
+    type: Literal['image_url']
+    image_url: dict
+
+
+ImageMessageContent = list[Union[ImageMessageTextMessage, ImageMessageImageItem]]
+
+
+class ImageMessage(TypedDict):
+    role: Literal["user"]
+    content: ImageMessageContent
+
+
+class TextMessage(TypedDict):
     role: Literal["user", "ai"]
     content: str
 
 
+Message = Union[TextMessage, ImageMessage]
+
 InputMessagesType = list[Union[Message, BaseMessage]]
+
 ResponseType = Union[str, list[BaseMessage]]
 
 

@@ -16,6 +16,8 @@ __all__ = ["DMAIAgent"]
 class DMAIAgent:
     agent_name = "AIAgent"
     _allowed_roles = ("user", "ai")
+    _response_if_request_fail = "I can't provide a response right now. Please try again later."
+    _response_if_invalid_image = "The image is unavailable or the link is incorrect."
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
 
     def __init__(
@@ -29,6 +31,8 @@ class DMAIAgent:
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
         max_memory_messages: int = None,
+        response_if_request_fail: str = None,
+        response_if_invalid_image: str = None
     ):
         if not os.getenv("OPENAI_API_KEY"):
             raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
@@ -38,6 +42,8 @@ class DMAIAgent:
         self._input_output_logging = bool(input_output_logging)
         self._is_memory_enabled = bool(is_memory_enabled)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
+        self._response_if_request_fail = str(response_if_request_fail or self._response_if_request_fail)
+        self._response_if_invalid_image = str(response_if_invalid_image or self._response_if_invalid_image)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
@@ -85,7 +91,6 @@ class DMAIAgent:
         self._memory[self._validate_memory_id(memory_id)] = []
 
     def _prepare_messages_node(self, state: State) -> State:
-        state.memory_id = self._validate_memory_id(state.memory_id)
         state.input_messages = state.input_messages or [{"role": "user", "content": ""}]
         for item in state.input_messages:
             if isinstance(item, dict):
@@ -102,14 +107,23 @@ class DMAIAgent:
                 state.messages.append(item)
 
         if self._input_output_logging:
-            self._logger.debug(f"Query:\n{state.messages[-1].content}", memory_id=state.memory_id)
+            log_kwargs = {} if state.memory_id is None else {"memory_id": state.memory_id}
+            self._logger.debug(f"Query:\n{state.messages[-1].content}", **log_kwargs)
         if self._is_memory_enabled:
             state.messages = self.get_memory_messages(state.memory_id) + state.messages
         return state
 
-    def _invoke_llm_node(self, state: State) -> State:
+    def _invoke_llm_node(self, state: State, second_attempt: bool = False) -> State:
         self._logger.debug("Run node: Invoke LLM")
-        ai_response = self._agent.invoke({"messages": state.messages})
+        try:
+            ai_response = self._agent.invoke({"messages": state.messages})
+        except Exception as e:
+            self._logger.error(e)
+            if second_attempt:
+                response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
+                state.messages.append(AIMessage(content=response))
+                return state
+            return self._invoke_llm_node(state, second_attempt=True)
         state.messages.append(ai_response)
         return state
 
@@ -148,12 +162,14 @@ class DMAIAgent:
     def _exit_node(self, state: State) -> State:
         answer = state.messages[-1].content
         if self._input_output_logging:
-            self._logger.debug(f"Answer:\n{answer}", memory_id=state.memory_id)
+            log_kwargs = {} if state.memory_id is None else {"memory_id": state.memory_id}
+            self._logger.debug(f"Answer:\n{answer}", **log_kwargs)
 
         if self._is_memory_enabled:
+            memory_id = self._validate_memory_id(state.memory_id)
             messages_to_memory = state.messages[-self._max_memory_messages:]
             # drop ToolsMessages from start of list
-            self._memory[state.memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+            self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
             state.response = answer
         else:
             state.response = state.messages[len(state.input_messages):]

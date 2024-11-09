@@ -114,6 +114,34 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Image vision
+
+```python
+from dm_aioaiagent import DMAIAgent, ImageMessageContentBuilder
+
+def main():
+    # create an agent
+    ai_agent = DMAIAgent(agent_name="image_vision", model="gpt-4o")
+
+    # create an image message content
+    # NOTE: text argument is optional
+    img_content = ImageMessageContentBuilder(image_url="https://your.domain/image",
+                                             text="Hello, what is shown in the photo?")
+
+    # define the conversation message
+    messages = [
+        {"role": "user", "content": "Hello!"},
+        {"role": "user", "content": img_content},
+    ]
+
+    # call an agent
+    answer = ai_agent.run(messages)
+
+
+if __name__ == "__main__":
+   main()
+```
+
 ### Set custom logger
 
 _If you want set up custom logger_
