@@ -1,4 +1,5 @@
 import os
+from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
 from langchain_openai import ChatOpenAI
@@ -32,9 +33,10 @@ class DMAIAgent:
         is_memory_enabled: bool = True,
         max_memory_messages: int = None,
         response_if_request_fail: str = None,
-        response_if_invalid_image: str = None
+        response_if_invalid_image: str = None,
+        openai_api_key: str = None
     ):
-        if not os.getenv("OPENAI_API_KEY"):
+        if openai_api_key is None and not os.getenv("OPENAI_API_KEY"):
             raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
 
         self._logger = DMLogger(agent_name or self.agent_name)
@@ -47,7 +49,9 @@ class DMAIAgent:
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
-        llm = ChatOpenAI(model=str(model), temperature=int(temperature))
+        if openai_api_key:
+            openai_api_key = SecretStr(openai_api_key)
+        llm = ChatOpenAI(model_name=str(model), temperature=int(temperature), openai_api_key=openai_api_key)
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in tools}
             llm = llm.bind_tools(tools)
