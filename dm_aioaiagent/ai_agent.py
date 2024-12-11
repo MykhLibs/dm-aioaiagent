@@ -31,6 +31,7 @@ class DMAIAgent:
         agent_name: str = None,
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
+        save_tools_responses_in_memory: bool = True,
         max_memory_messages: int = None,
         response_if_request_fail: str = None,
         response_if_invalid_image: str = None,
@@ -43,6 +44,7 @@ class DMAIAgent:
         self._is_tools_exists = bool(tools)
         self._input_output_logging = bool(input_output_logging)
         self._is_memory_enabled = bool(is_memory_enabled)
+        self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
         self._response_if_request_fail = str(response_if_request_fail or self._response_if_request_fail)
         self._response_if_invalid_image = str(response_if_invalid_image or self._response_if_invalid_image)
@@ -172,8 +174,15 @@ class DMAIAgent:
         if self._is_memory_enabled:
             memory_id = self._validate_memory_id(state.memory_id)
             messages_to_memory = state.messages[-self._max_memory_messages:]
-            # drop ToolsMessages from start of list
-            self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+            if self._save_tools_responses_in_memory:
+                # drop ToolsMessages from start of list
+                self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+            else:
+                self._memory[memory_id] = []
+                for mes in messages_to_memory:
+                    if isinstance(mes, ToolMessage) or (isinstance(mes, AIMessage) and mes.tool_calls):
+                        continue
+                    self._memory[memory_id].append(mes)
             state.response = answer
         else:
             state.response = state.messages[len(state.input_messages):]
