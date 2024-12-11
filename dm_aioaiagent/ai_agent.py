@@ -1,4 +1,5 @@
 import os
+from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
 from langchain_openai import ChatOpenAI
@@ -30,24 +31,29 @@ class DMAIAgent:
         agent_name: str = None,
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
+        save_tools_responses_in_memory: bool = True,
         max_memory_messages: int = None,
         response_if_request_fail: str = None,
-        response_if_invalid_image: str = None
+        response_if_invalid_image: str = None,
+        openai_api_key: str = None
     ):
-        if not os.getenv("OPENAI_API_KEY"):
+        if openai_api_key is None and not os.getenv("OPENAI_API_KEY"):
             raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
 
         self._logger = DMLogger(agent_name or self.agent_name)
         self._is_tools_exists = bool(tools)
         self._input_output_logging = bool(input_output_logging)
         self._is_memory_enabled = bool(is_memory_enabled)
+        self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
         self._response_if_request_fail = str(response_if_request_fail or self._response_if_request_fail)
         self._response_if_invalid_image = str(response_if_invalid_image or self._response_if_invalid_image)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
-        llm = ChatOpenAI(model=str(model), temperature=int(temperature))
+        if openai_api_key:
+            openai_api_key = SecretStr(openai_api_key)
+        llm = ChatOpenAI(model_name=str(model), temperature=int(temperature), openai_api_key=openai_api_key)
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in tools}
             llm = llm.bind_tools(tools)
@@ -168,8 +174,15 @@ class DMAIAgent:
         if self._is_memory_enabled:
             memory_id = self._validate_memory_id(state.memory_id)
             messages_to_memory = state.messages[-self._max_memory_messages:]
-            # drop ToolsMessages from start of list
-            self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+            if self._save_tools_responses_in_memory:
+                # drop ToolsMessages from start of list
+                self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+            else:
+                self._memory[memory_id] = []
+                for mes in messages_to_memory:
+                    if isinstance(mes, ToolMessage) or (isinstance(mes, AIMessage) and mes.tool_calls):
+                        continue
+                    self._memory[memory_id].append(mes)
             state.response = answer
         else:
             state.response = state.messages[len(state.input_messages):]
