@@ -117,7 +117,8 @@ if __name__ == "__main__":
 ### Image vision
 
 ```python
-from dm_aioaiagent import DMAIAgent, ImageMessageContentBuilder
+from dm_aioaiagent import DMAIAgent, OpenAIImageMessageContent
+
 
 def main():
     # create an agent
@@ -125,8 +126,8 @@ def main():
 
     # create an image message content
     # NOTE: text argument is optional
-    img_content = ImageMessageContentBuilder(image_url="https://your.domain/image",
-                                             text="Hello, what is shown in the photo?")
+    img_content = OpenAIImageMessageContent(image_url="https://your.domain/image",
+                                            text="Hello, what is shown in the photo?")
 
     # define the conversation message
     messages = [
@@ -139,7 +140,7 @@ def main():
 
 
 if __name__ == "__main__":
-   main()
+    main()
 ```
 
 ### Set custom logger
