@@ -14,11 +14,11 @@ __all__ = ["DMAIAgent"]
 
 
 class DMAIAgent:
-    agent_name = "AIAgent"
-    _allowed_roles = ("user", "ai")
-    _response_if_request_fail = "I can't provide a response right now. Please try again later."
-    _response_if_invalid_image = "The image is unavailable or the link is incorrect."
+    AGENT_NAME = "AIAgent"
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
+    RESPONSE_IF_REQUEST_FAIL = "I can't provide a response right now. Please try again later."
+    RESPONSE_IF_INVALID_IMAGE = "The image is unavailable or the link is incorrect."
+    _ALLOWED_ROLES = ("user", "ai")
 
     def __init__(
         self,
@@ -36,7 +36,7 @@ class DMAIAgent:
         response_if_request_fail: str = None,
         response_if_invalid_image: str = None
     ):
-        self._logger = DMLogger(agent_name or self.agent_name)
+        self._logger = DMLogger(agent_name or self.AGENT_NAME)
         self._input_output_logging = bool(input_output_logging)
 
         self._system_message = str(system_message)
@@ -49,8 +49,8 @@ class DMAIAgent:
         self._is_memory_enabled = bool(is_memory_enabled)
         self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
-        self._response_if_request_fail = str(response_if_request_fail or self._response_if_request_fail)
-        self._response_if_invalid_image = str(response_if_invalid_image or self._response_if_invalid_image)
+        self._response_if_request_fail = str(response_if_request_fail or self.RESPONSE_IF_REQUEST_FAIL)
+        self._response_if_invalid_image = str(response_if_invalid_image or self.RESPONSE_IF_INVALID_IMAGE)
 
         self._init_agent()
         self._init_graph()
@@ -82,7 +82,7 @@ class DMAIAgent:
             if isinstance(item, dict):
                 role = item.get("role")
                 content = item.get("content")
-                if not role or role not in self._allowed_roles or not content:
+                if not role or role not in self._ALLOWED_ROLES or not content:
                     continue
                 if role == "ai":
                     MessageClass = AIMessage
