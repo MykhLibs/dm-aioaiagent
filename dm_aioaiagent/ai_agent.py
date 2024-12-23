@@ -2,7 +2,6 @@ import os
 from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
-from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
@@ -15,11 +14,11 @@ __all__ = ["DMAIAgent"]
 
 
 class DMAIAgent:
-    agent_name = "AIAgent"
-    _allowed_roles = ("user", "ai")
-    _response_if_request_fail = "I can't provide a response right now. Please try again later."
-    _response_if_invalid_image = "The image is unavailable or the link is incorrect."
+    AGENT_NAME = "AIAgent"
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
+    RESPONSE_IF_REQUEST_FAIL = "I can't provide a response right now. Please try again later."
+    RESPONSE_IF_INVALID_IMAGE = "The image is unavailable or the link is incorrect."
+    _ALLOWED_ROLES = ("user", "ai")
 
     def __init__(
         self,
@@ -33,47 +32,28 @@ class DMAIAgent:
         is_memory_enabled: bool = True,
         save_tools_responses_in_memory: bool = True,
         max_memory_messages: int = None,
+        llm_provider_api_key: str = "",
         response_if_request_fail: str = None,
-        response_if_invalid_image: str = None,
-        openai_api_key: str = None
+        response_if_invalid_image: str = None
     ):
-        if openai_api_key is None and not os.getenv("OPENAI_API_KEY"):
-            raise EnvironmentError("'OPENAI_API_KEY' environment variable is not set!")
-
-        self._logger = DMLogger(agent_name or self.agent_name)
-        self._is_tools_exists = bool(tools)
+        self._logger = DMLogger(agent_name or self.AGENT_NAME)
         self._input_output_logging = bool(input_output_logging)
+
+        self._system_message = str(system_message)
+        self._tools = tools or []
+        self._is_tools_exists = bool(tools)
+        self._model = str(model)
+        self._temperature = int(temperature)
+        self._llm_provider_api_key = str(llm_provider_api_key)
+
         self._is_memory_enabled = bool(is_memory_enabled)
         self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
-        self._response_if_request_fail = str(response_if_request_fail or self._response_if_request_fail)
-        self._response_if_invalid_image = str(response_if_invalid_image or self._response_if_invalid_image)
+        self._response_if_request_fail = str(response_if_request_fail or self.RESPONSE_IF_REQUEST_FAIL)
+        self._response_if_invalid_image = str(response_if_invalid_image or self.RESPONSE_IF_INVALID_IMAGE)
 
-        prompt = ChatPromptTemplate.from_messages([SystemMessage(content=system_message),
-                                                   MessagesPlaceholder(variable_name="messages")])
-        if openai_api_key:
-            openai_api_key = SecretStr(openai_api_key)
-        llm = ChatOpenAI(model_name=str(model), temperature=int(temperature), openai_api_key=openai_api_key)
-        if self._is_tools_exists:
-            self._tool_map = {t.name: t for t in tools}
-            llm = llm.bind_tools(tools)
-        self._agent = prompt | llm
-        self._memory = {}
-
-        workflow = StateGraph(State)
-        workflow.add_node("Prepare messages", self._prepare_messages_node)
-        workflow.add_node("Invoke LLM", self._invoke_llm_node)
-        workflow.add_node("Execute tool", self._execute_tool_node)
-        workflow.add_node("Exit", self._exit_node)
-
-        workflow.add_edge("Prepare messages", "Invoke LLM")
-        workflow.add_conditional_edges(source="Invoke LLM",
-                                       path=self._messages_router,
-                                       path_map={"execute_tool": "Execute tool", "exit": "Exit"})
-        workflow.add_edge("Execute tool", "Invoke LLM")
-        workflow.set_entry_point("Prepare messages")
-        workflow.set_finish_point("Exit")
-        self._graph = workflow.compile()
+        self._init_agent()
+        self._init_graph()
 
     def run(self, input_messages: InputMessagesType, memory_id: str = None) -> ResponseType:
         state = self._graph.invoke({"input_messages": input_messages, "memory_id": memory_id})
@@ -102,7 +82,7 @@ class DMAIAgent:
             if isinstance(item, dict):
                 role = item.get("role")
                 content = item.get("content")
-                if not role or role not in self._allowed_roles or not content:
+                if not role or role not in self._ALLOWED_ROLES or not content:
                     continue
                 if role == "ai":
                     MessageClass = AIMessage
@@ -194,6 +174,49 @@ class DMAIAgent:
         else:
             route = "exit"
         return route
+
+    def _init_agent(self) -> None:
+        if self._llm_provider_api_key:
+            self._llm_provider_api_key = SecretStr(self._llm_provider_api_key)
+
+        if self._model.startswith("gpt"):
+            from langchain_openai import ChatOpenAI
+
+            api_key = SecretStr(self._llm_provider_api_key or os.getenv("OPENAI_API_KEY"))
+            llm = ChatOpenAI(model_name=self._model, temperature=self._temperature, openai_api_key=api_key)
+        elif self._model.startswith("claude"):
+            from langchain_anthropic import ChatAnthropic
+
+            api_key = SecretStr(self._llm_provider_api_key or os.getenv("ANTHROPIC_API_KEY"))
+            llm = ChatAnthropic(model=self._model, temperature=self._temperature, anthropic_api_key=api_key)
+        else:
+            raise ValueError(f"{self.__class__.__name__} not support this model: '{self._model}'")
+
+        if self._is_tools_exists:
+            self._tool_map = {t.name: t for t in self._tools}
+            llm = llm.bind_tools(self._tools)
+
+        prompt = ChatPromptTemplate.from_messages([SystemMessage(content=self._system_message),
+                                                   MessagesPlaceholder(variable_name="messages")])
+
+        self._agent = prompt | llm
+        self._memory = {}
+
+    def _init_graph(self) -> None:
+        workflow = StateGraph(State)
+        workflow.add_node("Prepare messages", self._prepare_messages_node)
+        workflow.add_node("Invoke LLM", self._invoke_llm_node)
+        workflow.add_node("Execute tool", self._execute_tool_node)
+        workflow.add_node("Exit", self._exit_node)
+
+        workflow.add_edge("Prepare messages", "Invoke LLM")
+        workflow.add_conditional_edges(source="Invoke LLM",
+                                       path=self._messages_router,
+                                       path_map={"execute_tool": "Execute tool", "exit": "Exit"})
+        workflow.add_edge("Execute tool", "Invoke LLM")
+        workflow.set_entry_point("Prepare messages")
+        workflow.set_finish_point("Exit")
+        self._graph = workflow.compile()
 
     @staticmethod
     def _validate_memory_id(memory_id: Union[str, None]) -> Union[str, int]:

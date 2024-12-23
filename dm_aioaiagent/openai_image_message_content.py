@@ -1,4 +1,4 @@
-class ImageMessageContentBuilder(list):
+class OpenAIImageMessageContent(list):
     def __init__(self, image_url: str, text: str = None):
         content = []
         if isinstance(text, str):
