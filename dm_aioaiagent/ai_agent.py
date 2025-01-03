@@ -27,6 +27,7 @@ class DMAIAgent:
         *,
         model: str = "gpt-4o-mini",
         temperature: int = 1,
+        parallel_tool_calls: bool = True,
         agent_name: str = None,
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
@@ -44,6 +45,7 @@ class DMAIAgent:
         self._is_tools_exists = bool(tools)
         self._model = str(model)
         self._temperature = int(temperature)
+        self._parallel_tool_calls = bool(parallel_tool_calls)
         self._llm_provider_api_key = str(llm_provider_api_key)
 
         self._is_memory_enabled = bool(is_memory_enabled)
@@ -194,7 +196,7 @@ class DMAIAgent:
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
-            llm = llm.bind_tools(self._tools)
+            llm = llm.bind_tools(self._tools, parallel_tool_calls=self._parallel_tool_calls)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=self._system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
