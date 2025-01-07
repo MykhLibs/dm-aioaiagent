@@ -1,6 +1,5 @@
-from typing import Optional, Literal, Union
+from typing import Literal, Union
 from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 
 
@@ -14,12 +13,9 @@ class ImageMessageImageItem(TypedDict):
     image_url: dict
 
 
-ImageMessageContent = list[Union[ImageMessageTextMessage, ImageMessageImageItem]]
-
-
 class ImageMessage(TypedDict):
     role: Literal["user"]
-    content: ImageMessageContent
+    content: list[Union[ImageMessageTextMessage, ImageMessageImageItem]]
 
 
 class TextMessage(TypedDict):
@@ -27,15 +23,8 @@ class TextMessage(TypedDict):
     content: str
 
 
-Message = Union[TextMessage, ImageMessage]
+InputMessagesType = list[Union[TextMessage, ImageMessage, BaseMessage]]
 
-InputMessagesType = list[Union[Message, BaseMessage]]
-
-ResponseType = Union[str, list[BaseMessage]]
-
-
-class State(BaseModel):
-    input_messages: InputMessagesType
-    memory_id: Union[str, int, None] = Field(default=0)
-    messages: Optional[list[BaseMessage]] = Field(default_factory=list)
-    response: ResponseType = Field(default="")
+class State(TypedDict):
+    messages: InputMessagesType
+    new_messages: list[BaseMessage]

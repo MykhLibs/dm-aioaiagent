@@ -1,4 +1,6 @@
 import os
+import uuid
+from typing import Any
 from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
@@ -14,10 +16,7 @@ __all__ = ["DMAIAgent"]
 
 
 class DMAIAgent:
-    AGENT_NAME = "AIAgent"
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
-    RESPONSE_IF_REQUEST_FAIL = "I can't provide a response right now. Please try again later."
-    RESPONSE_IF_INVALID_IMAGE = "The image is unavailable or the link is incorrect."
     _ALLOWED_ROLES = ("user", "ai")
 
     def __init__(
@@ -28,16 +27,16 @@ class DMAIAgent:
         model: str = "gpt-4o-mini",
         temperature: int = 1,
         parallel_tool_calls: bool = True,
-        agent_name: str = None,
+        agent_name: str = "AIAgent",
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
+        max_memory_messages: int = MAX_MEMORY_MESSAGES,
         save_tools_responses_in_memory: bool = True,
-        max_memory_messages: int = None,
         llm_provider_api_key: str = "",
-        response_if_request_fail: str = None,
-        response_if_invalid_image: str = None
+        response_if_request_fail: str = "I can't provide a response right now. Please try again later.",
+        response_if_invalid_image: str = "The image is unavailable or the link is incorrect."
     ):
-        self._logger = DMLogger(agent_name or self.AGENT_NAME)
+        self._logger = DMLogger(agent_name)
         self._input_output_logging = bool(input_output_logging)
 
         self._system_message = str(system_message)
@@ -48,39 +47,57 @@ class DMAIAgent:
         self._parallel_tool_calls = bool(parallel_tool_calls)
         self._llm_provider_api_key = str(llm_provider_api_key)
 
+        self._memory_messages = []
         self._is_memory_enabled = bool(is_memory_enabled)
         self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
-        self._response_if_request_fail = str(response_if_request_fail or self.RESPONSE_IF_REQUEST_FAIL)
-        self._response_if_invalid_image = str(response_if_invalid_image or self.RESPONSE_IF_INVALID_IMAGE)
+        self._response_if_request_fail = str(response_if_request_fail)
+        self._response_if_invalid_image = str(response_if_invalid_image)
 
+        self._check_langsmith_envs()
         self._init_agent()
         self._init_graph()
 
-    def run(self, input_messages: InputMessagesType, memory_id: str = None) -> ResponseType:
-        state = self._graph.invoke({"input_messages": input_messages, "memory_id": memory_id})
-        return state["response"]
+    def run(self, query: str, **kwargs) -> str:
+        new_messages = self.run_messages(messages=[{"role": "user", "content": query}], **kwargs)
+        return new_messages[-1].content
 
-    def get_memory_messages(
+    def run_messages(
         self,
-        memory_id: str = None,
+        messages: InputMessagesType,
         *,
-        without_tool_m: bool = False,
-        return_str_m: bool = False
-    ) -> Union[list[BaseMessage], list[str]]:
-        messages = self._memory.get(self._validate_memory_id(memory_id), [])
-        if without_tool_m:
-            messages = [m for m in messages if not (m.type == "tool" or (m.type == "ai" and m.tool_calls))]
-        if return_str_m:
-            messages = [m.content for m in messages]
-        return messages
+        ls_metadata: dict[str, Any] = None,
+        ls_tags: list[str] = None,
+        ls_run_id: uuid.UUID = None,
+        ls_thread_id: uuid.UUID = None
+    ) -> list[BaseMessage]:
+        if ls_metadata is None:
+            ls_metadata = {}
+        if isinstance(ls_run_id, uuid.UUID):
+            ls_run_id = ls_run_id
+        if isinstance(ls_thread_id, uuid.UUID):
+            ls_metadata["thread_id"] = ls_thread_id
 
-    def clear_memory(self, memory_id: str = None) -> None:
-        self._memory[self._validate_memory_id(memory_id)] = []
+        config_data = {
+            "metadata": ls_metadata,
+            "tags": ls_tags,
+            "run_id": ls_run_id
+        }
+        state = self._graph.invoke(input={"messages": messages, "new_messages": []},
+                                   config={k: v for k, v in config_data.items() if v})
+        return state["new_messages"]
+
+    @property
+    def memory_messages(self) -> list[BaseMessage]:
+        return self._memory_messages
+
+    def clear_memory_messages(self) -> None:
+        self._memory_messages.clear()
 
     def _prepare_messages_node(self, state: State) -> State:
-        state.input_messages = state.input_messages or [{"role": "user", "content": ""}]
-        for item in state.input_messages:
+        messages = state["messages"] or [{"role": "user", "content": ""}]
+        state["messages"] = []
+        for item in messages:
             if isinstance(item, dict):
                 role = item.get("role")
                 content = item.get("content")
@@ -90,35 +107,35 @@ class DMAIAgent:
                     MessageClass = AIMessage
                 else:
                     MessageClass = HumanMessage
-                state.messages.append(MessageClass(content))
+                state["messages"].append(MessageClass(content))
             elif isinstance(item, BaseMessage):
-                state.messages.append(item)
+                state["messages"].append(item)
 
         if self._input_output_logging:
-            log_kwargs = {} if state.memory_id is None else {"memory_id": state.memory_id}
-            self._logger.debug(f"Query:\n{state.messages[-1].content}", **log_kwargs)
+            self._logger.debug(f'Query:\n{state["messages"][-1].content}')
         if self._is_memory_enabled:
-            state.messages = self.get_memory_messages(state.memory_id) + state.messages
+            state["messages"] = self._memory_messages + state["messages"]
         return state
 
     def _invoke_llm_node(self, state: State, second_attempt: bool = False) -> State:
         self._logger.debug("Run node: Invoke LLM")
         try:
-            ai_response = self._agent.invoke({"messages": state.messages})
+            ai_response = self._agent.invoke({"messages": state["messages"]})
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
                 response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
-                state.messages.append(AIMessage(content=response))
+                state["messages"].append(AIMessage(content=response))
                 return state
             return self._invoke_llm_node(state, second_attempt=True)
-        state.messages.append(ai_response)
+        state["messages"].append(ai_response)
+        state["new_messages"].append(ai_response)
         return state
 
     def _execute_tool_node(self, state: State) -> State:
         self._logger.debug("Run node: Execute tool")
         threads = []
-        for tool_call in state.messages[-1].tool_calls:
+        for tool_call in state["messages"][-1].tool_calls:
             tool_id = tool_call["id"]
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
@@ -136,7 +153,8 @@ class DMAIAgent:
                 self._logger.debug(f"Tool response:\n{tool_response}", tool_id=tool_id)
 
                 tool_message = ToolMessage(content=str(tool_response), name=tool_name, tool_call_id=tool_id)
-                state.messages.append(tool_message)
+                state["messages"].append(tool_message)
+                state["new_messages"].append(tool_message)
 
             threads.append(Thread(target=tool_callback, daemon=True))
 
@@ -144,34 +162,27 @@ class DMAIAgent:
             t.start()
         for t in threads:
             t.join()
-
         return state
 
     def _exit_node(self, state: State) -> State:
-        answer = state.messages[-1].content
         if self._input_output_logging:
-            log_kwargs = {} if state.memory_id is None else {"memory_id": state.memory_id}
-            self._logger.debug(f"Answer:\n{answer}", **log_kwargs)
+            self._logger.debug(f'Answer:\n{state["messages"][-1].content}')
 
         if self._is_memory_enabled:
-            memory_id = self._validate_memory_id(state.memory_id)
-            messages_to_memory = state.messages[-self._max_memory_messages:]
+            messages_to_memory = state["messages"][-self._max_memory_messages:]
             if self._save_tools_responses_in_memory:
                 # drop ToolsMessages from start of list
-                self._memory[memory_id] = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
+                self._memory_messages = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
             else:
-                self._memory[memory_id] = []
+                self._memory_messages.clear()
                 for mes in messages_to_memory:
                     if isinstance(mes, ToolMessage) or (isinstance(mes, AIMessage) and mes.tool_calls):
                         continue
-                    self._memory[memory_id].append(mes)
-            state.response = answer
-        else:
-            state.response = state.messages[len(state.input_messages):]
+                    self._memory_messages.append(mes)
         return state
 
     def _messages_router(self, state: State) -> str:
-        if self._is_tools_exists and state.messages[-1].tool_calls:
+        if self._is_tools_exists and state["messages"][-1].tool_calls:
             route = "execute_tool"
         else:
             route = "exit"
@@ -202,7 +213,6 @@ class DMAIAgent:
                                                    MessagesPlaceholder(variable_name="messages")])
 
         self._agent = prompt | llm
-        self._memory = {}
 
     def _init_graph(self) -> None:
         workflow = StateGraph(State)
@@ -221,8 +231,12 @@ class DMAIAgent:
         self._graph = workflow.compile()
 
     @staticmethod
-    def _validate_memory_id(memory_id: Union[str, None]) -> Union[str, int]:
-        return str(memory_id) if memory_id else 0
+    def _check_langsmith_envs() -> None:
+        if os.getenv("LANGCHAIN_API_KEY"):
+            if not os.getenv("LANGCHAIN_TRACING_V2"):
+                os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            if not os.getenv("LANGCHAIN_ENDPOINT"):
+                os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 
     @classmethod
     def _validate_max_memory_messages(cls, max_messages_in_memory: int) -> int:
