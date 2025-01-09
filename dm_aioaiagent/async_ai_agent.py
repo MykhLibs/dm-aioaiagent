@@ -14,13 +14,13 @@ __all__ = ["DMAioAIAgent"]
 
 
 class DMAioAIAgent(DMAIAgent):
-    async def run(self, query: str, **kwargs) -> str:
-        new_messages = await self.run_messages(messages=[{"role": "user", "content": query}], **kwargs)
+    async def run(self, query: str, *args, **kwargs) -> str:
+        new_messages = await self.run_messages(messages=[{"role": "user", "content": query}], *args, **kwargs)
         return new_messages[-1].content
 
     async def run_messages(
         self,
-        messages: InputMessagesType,
+        messages: list[InputMessage],
         *,
         ls_metadata: dict[str, Any] = None,
         ls_tags: list[str] = None,

@@ -3,7 +3,7 @@ from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage
 
 
-class ImageMessageTextMessage(TypedDict):
+class ImageMessageTextItem(TypedDict):
     type: Literal['text']
     text: str
 
@@ -15,7 +15,7 @@ class ImageMessageImageItem(TypedDict):
 
 class ImageMessage(TypedDict):
     role: Literal["user"]
-    content: list[Union[ImageMessageTextMessage, ImageMessageImageItem]]
+    content: list[Union[ImageMessageTextItem, ImageMessageImageItem]]
 
 
 class TextMessage(TypedDict):
@@ -23,8 +23,8 @@ class TextMessage(TypedDict):
     content: str
 
 
-InputMessagesType = list[Union[TextMessage, ImageMessage, BaseMessage]]
+InputMessage = Union[TextMessage, ImageMessage, BaseMessage]
 
 class State(TypedDict):
-    messages: InputMessagesType
+    messages: list[InputMessage]
     new_messages: list[BaseMessage]

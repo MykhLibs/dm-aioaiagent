@@ -64,7 +64,7 @@ class DMAIAgent:
 
     def run_messages(
         self,
-        messages: InputMessagesType,
+        messages: list[InputMessage],
         *,
         ls_metadata: dict[str, Any] = None,
         ls_tags: list[str] = None,
