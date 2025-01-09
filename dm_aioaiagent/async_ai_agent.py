@@ -14,8 +14,6 @@ __all__ = ["DMAioAIAgent"]
 
 
 class DMAioAIAgent(DMAIAgent):
-    agent_name = "AsyncAIAgent"
-
     async def run(self, query: str, **kwargs) -> str:
         new_messages = await self.run_messages(messages=[{"role": "user", "content": query}], **kwargs)
         return new_messages[-1].content
