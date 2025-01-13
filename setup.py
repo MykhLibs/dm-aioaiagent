@@ -22,12 +22,12 @@ setup(
         'pydantic>=2.9.2, < 3.0.0',
         'langchain~=0.3.0',
         'langchain-core~=0.3.5',
+        'langchain-community~=0.3.0',
+        'langchain-openai~=0.3.0',
+        'langchain-anthropic~=0.3.0',
         'langgraph~=0.2.23',
         'langsmith~=0.1.144',
         'grandalf>=0.8',
-        'langchain-community~=0.3.0',
-        'langchain-openai~=0.2.0',
-        'langchain-anthropic~=0.3.0'
     ],
     classifiers=[
         'Programming Language :: Python :: 3.8',
