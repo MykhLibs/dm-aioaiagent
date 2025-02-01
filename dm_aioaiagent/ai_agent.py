@@ -33,6 +33,7 @@ class DMAIAgent:
         max_memory_messages: int = MAX_MEMORY_MESSAGES,
         save_tools_responses_in_memory: bool = True,
         llm_provider_api_key: str = "",
+        llm_provider_base_url: str = "",
         response_if_request_fail: str = "I can't provide a response right now. Please try again later.",
         response_if_invalid_image: str = "The image is unavailable or the link is incorrect."
     ):
@@ -46,6 +47,7 @@ class DMAIAgent:
         self._temperature = int(temperature)
         self._parallel_tool_calls = bool(parallel_tool_calls)
         self._llm_provider_api_key = str(llm_provider_api_key)
+        self._llm_provider_base_url = str(llm_provider_base_url)
 
         self._memory_messages = []
         self._is_memory_enabled = bool(is_memory_enabled)
@@ -125,7 +127,9 @@ class DMAIAgent:
             self._logger.error(e)
             if second_attempt:
                 response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
-                state["messages"].append(AIMessage(content=response))
+                ai_response = AIMessage(content=response)
+                state["messages"].append(ai_response)
+                state["new_messages"].append(ai_response)
                 return state
             return self._invoke_llm_node(state, second_attempt=True)
         state["messages"].append(ai_response)
@@ -189,21 +193,22 @@ class DMAIAgent:
         return route
 
     def _init_agent(self) -> None:
+        base_kwargs = {
+            "model": self._model,
+            "temperature": self._temperature,
+            "base_url": self._llm_provider_base_url if self._llm_provider_base_url else None
+        }
         if self._llm_provider_api_key:
-            self._llm_provider_api_key = SecretStr(self._llm_provider_api_key)
+            base_kwargs["api_key"] = SecretStr(self._llm_provider_api_key)
 
-        if self._model.startswith("gpt"):
-            from langchain_openai import ChatOpenAI
-
-            api_key = SecretStr(self._llm_provider_api_key or os.getenv("OPENAI_API_KEY"))
-            llm = ChatOpenAI(model_name=self._model, temperature=self._temperature, openai_api_key=api_key)
-        elif self._model.startswith("claude"):
+        if self._model.startswith("claude"):
             from langchain_anthropic import ChatAnthropic
 
-            api_key = SecretStr(self._llm_provider_api_key or os.getenv("ANTHROPIC_API_KEY"))
-            llm = ChatAnthropic(model=self._model, temperature=self._temperature, anthropic_api_key=api_key)
+            llm = ChatAnthropic(**base_kwargs)
         else:
-            raise ValueError(f"{self.__class__.__name__} not support this model: '{self._model}'")
+            from langchain_openai import ChatOpenAI
+
+            llm = ChatOpenAI(**base_kwargs)
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}

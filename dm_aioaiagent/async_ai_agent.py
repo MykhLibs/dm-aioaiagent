@@ -51,7 +51,9 @@ class DMAioAIAgent(DMAIAgent):
             self._logger.error(e)
             if second_attempt:
                 response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
-                state["messages"].append(AIMessage(content=response))
+                ai_response = AIMessage(content=response)
+                state["messages"].append(ai_response)
+                state["new_messages"].append(ai_response)
                 return state
             return await self._invoke_llm_node(state, second_attempt=True)
         state["messages"].append(ai_response)
