@@ -205,18 +205,22 @@ class DMAIAgent:
             from langchain_anthropic import ChatAnthropic
 
             llm = ChatAnthropic(**base_kwargs)
+            bind_tool_kwargs = {"tool_choice": {
+                "type": "auto",
+                "disable_parallel_tool_use": not self._parallel_tool_calls
+            }}
         else:
             from langchain_openai import ChatOpenAI
 
             llm = ChatOpenAI(**base_kwargs)
+            bind_tool_kwargs = {"parallel_tool_calls": self._parallel_tool_calls}
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
-            llm = llm.bind_tools(self._tools, parallel_tool_calls=self._parallel_tool_calls)
+            llm = llm.bind_tools(self._tools, **bind_tool_kwargs)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=self._system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
-
         self._agent = prompt | llm
 
     def _init_graph(self) -> None:
