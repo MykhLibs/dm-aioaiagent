@@ -1,4 +1,3 @@
-import sys
 import uuid
 import asyncio
 from typing import Any
@@ -6,9 +5,6 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from .ai_agent import DMAIAgent
 from .types import *
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 __all__ = ["DMAioAIAgent"]
 
