@@ -25,8 +25,8 @@ class DMAIAgent:
         tools: list[BaseTool] = None,
         *,
         model: str = "gpt-4o-mini",
-        temperature: int = 1,
-        parallel_tool_calls: bool = True,
+        temperature: float = None,
+        parallel_tool_calls: bool = None,
         agent_name: str = "AIAgent",
         input_output_logging: bool = True,
         is_memory_enabled: bool = True,
@@ -44,8 +44,8 @@ class DMAIAgent:
         self._tools = tools or []
         self._is_tools_exists = bool(tools)
         self._model = str(model)
-        self._temperature = int(temperature)
-        self._parallel_tool_calls = bool(parallel_tool_calls)
+        self._temperature = temperature
+        self._parallel_tool_calls = parallel_tool_calls
         self._llm_provider_api_key = str(llm_provider_api_key)
         self._llm_provider_base_url = str(llm_provider_base_url)
 
@@ -193,27 +193,28 @@ class DMAIAgent:
         return route
 
     def _init_agent(self) -> None:
-        base_kwargs = {
-            "model": self._model,
-            "temperature": self._temperature,
-            "base_url": self._llm_provider_base_url if self._llm_provider_base_url else None
-        }
+        base_kwargs = {"model": self._model}
+        if isinstance(self._temperature, float):
+            base_kwargs["temperature"] = self._temperature
         if self._llm_provider_api_key:
             base_kwargs["api_key"] = SecretStr(self._llm_provider_api_key)
+        if self._llm_provider_base_url:
+            base_kwargs["base_url"] = self._llm_provider_base_url
 
         if self._model.startswith("claude"):
             from langchain_anthropic import ChatAnthropic
 
             llm = ChatAnthropic(**base_kwargs)
-            bind_tool_kwargs = {"tool_choice": {
-                "type": "auto",
-                "disable_parallel_tool_use": not self._parallel_tool_calls
-            }}
+            bind_tool_kwargs = {"tool_choice": {"type": "auto"}}
+            if isinstance(self._parallel_tool_calls, bool):
+                bind_tool_kwargs["tool_choice"]["disable_parallel_tool_use"] = not self._parallel_tool_calls
         else:
             from langchain_openai import ChatOpenAI
 
             llm = ChatOpenAI(**base_kwargs)
-            bind_tool_kwargs = {"parallel_tool_calls": self._parallel_tool_calls}
+            bind_tool_kwargs = {}
+            if isinstance(self._parallel_tool_calls, bool):
+                bind_tool_kwargs["parallel_tool_calls"] = self._parallel_tool_calls
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
