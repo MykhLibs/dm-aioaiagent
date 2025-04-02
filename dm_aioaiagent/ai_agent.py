@@ -18,6 +18,7 @@ __all__ = ["DMAIAgent"]
 class DMAIAgent:
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
     _ALLOWED_ROLES = ("user", "ai")
+    _logger_params = None
 
     def __init__(
         self,
@@ -37,7 +38,7 @@ class DMAIAgent:
         response_if_request_fail: str = "I can't provide a response right now. Please try again later.",
         response_if_invalid_image: str = "The image is unavailable or the link is incorrect."
     ):
-        self._logger = DMLogger(agent_name)
+        self._set_logger(agent_name)
         self._input_output_logging = bool(input_output_logging)
 
         self._system_message = str(system_message)
@@ -265,13 +266,13 @@ class DMAIAgent:
         except Exception as e:
             self._logger.error(e)
 
-    def set_logger(self, logger) -> None:
-        if (
-            hasattr(logger, "debug") and callable(logger.debug) and
-            hasattr(logger, "info") and callable(logger.info) and
-            hasattr(logger, "warning") and callable(logger.warning) and
-            hasattr(logger, "error") and callable(logger.error)
-        ):
-            self._logger = logger
-        else:
-            print("Invalid logger")
+    def _set_logger(self, agent_name: str) -> None:
+        params = {"name": agent_name}
+        if isinstance(self._logger_params, dict):
+            params.update(self._logger_params)
+        self._logger = DMLogger(**params)
+
+    @classmethod
+    def set_logger_params(cls, extra_params = None) -> None:
+        if isinstance(extra_params, dict) or extra_params is None:
+            cls._logger_params = extra_params

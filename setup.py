@@ -17,7 +17,7 @@ setup(
     url='https://pypi.org/project/dm-aioaiagent',
     packages=find_packages(),
     install_requires=[
-        'dm-logger~=0.5.2',
+        'dm-logger~=0.6.2',
         'python-dotenv>=1.0.0',
         'pydantic>=2.9.2, < 3.0.0',
         'langchain~=0.3.0',

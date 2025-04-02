@@ -10,6 +10,17 @@ __all__ = ["DMAioAIAgent"]
 
 
 class DMAioAIAgent(DMAIAgent):
+    _logger_params = None
+
+    def __init__(self, *args, agent_name: str = "AioAIAgent", **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if not isinstance(self._logger_params, dict):
+            self._logger_params = {}
+        if "name" not in self._logger_params:
+            self._logger_params["name"] = agent_name
+        self._set_logger(agent_name)
+
     async def run(self, query: str, *args, **kwargs) -> str:
         new_messages = await self.run_messages(messages=[{"role": "user", "content": query}], *args, **kwargs)
         return new_messages[-1].content

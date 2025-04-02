@@ -11,6 +11,16 @@
 
 Analogue to `DMAioAIAgent` is the synchronous client `DMAIAgent`.
 
+### Windows Setup
+
+```python
+import asyncio
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+```
+
 ### Use agent *with* inner memory and run *single* message
 
 By default, agent use inner memory to store the conversation history.
@@ -135,30 +145,21 @@ if __name__ == "__main__":
 
 ### Set custom logger
 
-_If you want set up custom logger_
-
 ```python
-from dm_aioaiagent import DMAioAIAgent
+from dm_aioaiagent import DMAIAgent
+from dm_logger import FormatterConfig
 
 
-# create custom logger
-class MyLogger:
-    def debug(self, message):
-        pass
-
-    def info(self, message):
-        pass
-
-    def warning(self, message):
-        print(message)
-
-    def error(self, message):
-        print(message)
-
-
-# create an agent
-ai_agent = DMAioAIAgent()
-
-# set up custom logger for this agent
-ai_agent.set_logger(MyLogger())
+# set up custom logger for all clients
+DMAIAgent.set_logger_params(
+   {
+      "name": "my_name",
+      "formatter_config": FormatterConfig(
+         show_datetime=False,
+      )
+   }
+)
 ```
+
+See more about DMLogger [here](https://github.com/MykhLibs/dm-logger)
+
