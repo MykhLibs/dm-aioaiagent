@@ -1,5 +1,4 @@
-from typing import Literal, Union, Type
-from typing_extensions import TypedDict
+from typing import Literal, Union, Type, TypedDict
 from pydantic import BaseModel
 from langchain_core.messages import BaseMessage
 
