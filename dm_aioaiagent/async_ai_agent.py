@@ -6,24 +6,18 @@ from langchain_core.messages import AIMessage, ToolMessage
 from .ai_agent import DMAIAgent
 from .types import *
 
-__all__ = ["DMAioAIAgent"]
-
 
 class DMAioAIAgent(DMAIAgent):
-    _logger_params = None
-
-    def __init__(self, *args, agent_name: str = "AioAIAgent", **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if not isinstance(self._logger_params, dict):
-            self._logger_params = {}
-        if "name" not in self._logger_params:
-            self._logger_params["name"] = agent_name
-        self._set_logger(agent_name)
+    async def run(self, query: str, *args, **kwargs) -> Union[str, TypedDict, BaseModel]:
+        new_messages = await self.run_messages(messages=[TextMessage(role="user", content=query)], *args, **kwargs)
 
-    async def run(self, query: str, *args, **kwargs) -> str:
-        new_messages = await self.run_messages(messages=[{"role": "user", "content": query}], *args, **kwargs)
-        return new_messages[-1].content
+        last_message = new_messages[-1]
+        if isinstance(last_message, AIMessage):
+            return last_message.content
+        return last_message
 
     async def run_messages(
         self,
@@ -46,8 +40,10 @@ class DMAioAIAgent(DMAIAgent):
             "tags": ls_tags,
             "run_id": ls_run_id
         }
-        state = await self._graph.ainvoke(input={"messages": messages, "new_messages": []},
-                                          config={k: v for k, v in config_data.items() if v})
+        state = await self._graph.ainvoke(
+            input={"messages": messages, "new_messages": []},
+            config={k: v for k, v in config_data.items() if v}
+        )
         return state["new_messages"]
 
     async def _invoke_llm_node(self, state: State, second_attempt: bool = False) -> State:
@@ -57,12 +53,18 @@ class DMAioAIAgent(DMAIAgent):
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
-                response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
+                if "invalid_image_url" in str(e):
+                    response = self._response_if_invalid_image
+                else:
+                    response = self._response_if_request_fail
+
                 ai_response = AIMessage(content=response)
                 state["messages"].append(ai_response)
                 state["new_messages"].append(ai_response)
                 return state
+
             return await self._invoke_llm_node(state, second_attempt=True)
+
         state["messages"].append(ai_response)
         state["new_messages"].append(ai_response)
         return state
@@ -70,6 +72,7 @@ class DMAioAIAgent(DMAIAgent):
     async def _execute_tool_node(self, state: State) -> State:
         self._logger.debug("Run node: Execute tool")
         tasks = []
+
         for tool_call in state["messages"][-1].tool_calls:
             tool_id = tool_call["id"]
             tool_name = tool_call["name"]

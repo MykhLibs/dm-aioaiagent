@@ -21,6 +21,17 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 ```
 
+### Api Key Setup
+
+You can set your OpenAI API key in the environment variable `OPENAI_API_KEY` or pass it as an argument to the agent.
+
+**Use load_dotenv to load the `.env` file.**
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
 ### Use agent *with* inner memory and run *single* message
 
 By default, agent use inner memory to store the conversation history.
@@ -142,24 +153,3 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-
-### Set custom logger
-
-```python
-from dm_aioaiagent import DMAIAgent
-from dm_logger import FormatterConfig
-
-
-# set up custom logger for all clients
-DMAIAgent.set_logger_params(
-   {
-      "name": "my_name",
-      "formatter_config": FormatterConfig(
-         show_datetime=False,
-      )
-   }
-)
-```
-
-See more about DMLogger [here](https://github.com/MykhLibs/dm-logger)
-

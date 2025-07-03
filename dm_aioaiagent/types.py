@@ -1,6 +1,9 @@
-from typing import Literal, Union
+from typing import Literal, Union, Type
 from typing_extensions import TypedDict
+from pydantic import BaseModel
 from langchain_core.messages import BaseMessage
+
+OutputSchemaType = Union[Type[TypedDict], Type[BaseModel], None]
 
 
 class ImageMessageTextItem(TypedDict):
@@ -24,6 +27,7 @@ class TextMessage(TypedDict):
 
 
 InputMessage = Union[TextMessage, ImageMessage, BaseMessage]
+
 
 class State(TypedDict):
     messages: list[InputMessage]

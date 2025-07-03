@@ -12,58 +12,73 @@ from dm_logger import DMLogger
 
 from .types import *
 
-__all__ = ["DMAIAgent"]
-
 
 class DMAIAgent:
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
     _ALLOWED_ROLES = ("user", "ai")
-    _logger_params = None
 
     def __init__(
         self,
+        # general
         system_message: str = "You are a helpful assistant.",
-        tools: list[BaseTool] = None,
-        *,
         model: str = "gpt-4o-mini",
         temperature: float = None,
-        parallel_tool_calls: bool = None,
+        output_schema: OutputSchemaType = None,  # IF you set output_schema, tools and memory will be disabled
         agent_name: str = "AIAgent",
-        input_output_logging: bool = True,
+        # tools
+        tools: list[BaseTool] = None,
+        parallel_tool_calls: bool = None,
+        # memory
         is_memory_enabled: bool = True,
-        max_memory_messages: int = MAX_MEMORY_MESSAGES,
         save_tools_responses_in_memory: bool = True,
-        llm_provider_api_key: str = "",
-        llm_provider_base_url: str = "",
+        max_memory_messages: int = MAX_MEMORY_MESSAGES,
+        # other
+        input_output_logging: bool = True,
         response_if_request_fail: str = "I can't provide a response right now. Please try again later.",
-        response_if_invalid_image: str = "The image is unavailable or the link is incorrect."
+        response_if_invalid_image: str = "The image is unavailable or the link is incorrect.",
+        # llm provider
+        llm_provider_api_key: str = "",
+        llm_provider_base_url: str = ""
     ):
-        self._set_logger(agent_name)
-        self._input_output_logging = bool(input_output_logging)
+        self._logger = DMLogger(agent_name)
 
+        # general
         self._system_message = str(system_message)
-        self._tools = tools or []
-        self._is_tools_exists = bool(tools)
         self._model = str(model)
         self._temperature = temperature
+        self._output_schema = self._validate_output_schema(output_schema)
+        if self._output_schema:
+            tools = []
+            parallel_tool_calls = None
+            is_memory_enabled = False
+        # tools
+        self._tools = tools or []
+        self._is_tools_exists = bool(tools)
         self._parallel_tool_calls = parallel_tool_calls
-        self._llm_provider_api_key = str(llm_provider_api_key)
-        self._llm_provider_base_url = str(llm_provider_base_url)
-
+        # memory
         self._memory_messages = []
         self._is_memory_enabled = bool(is_memory_enabled)
         self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
+        # other
+        self._input_output_logging = bool(input_output_logging)
         self._response_if_request_fail = str(response_if_request_fail)
         self._response_if_invalid_image = str(response_if_invalid_image)
+        # llm provider
+        self._llm_provider_api_key = str(llm_provider_api_key)
+        self._llm_provider_base_url = str(llm_provider_base_url)
 
         self._check_langsmith_envs()
         self._init_agent()
         self._init_graph()
 
-    def run(self, query: str, **kwargs) -> str:
-        new_messages = self.run_messages(messages=[{"role": "user", "content": query}], **kwargs)
-        return new_messages[-1].content
+    def run(self, query: str, **kwargs) -> Union[str, TypedDict, BaseModel]:
+        new_messages = self.run_messages(messages=[TextMessage(role="user", content=query)], **kwargs)
+
+        last_message = new_messages[-1]
+        if isinstance(last_message, AIMessage):
+            return last_message.content
+        return last_message
 
     def run_messages(
         self,
@@ -86,8 +101,10 @@ class DMAIAgent:
             "tags": ls_tags,
             "run_id": ls_run_id
         }
-        state = self._graph.invoke(input={"messages": messages, "new_messages": []},
-                                   config={k: v for k, v in config_data.items() if v})
+        state = self._graph.invoke(
+            input={"messages": messages, "new_messages": []},
+            config={k: v for k, v in config_data.items() if v}
+        )
         return state["new_messages"]
 
     @property
@@ -127,12 +144,18 @@ class DMAIAgent:
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
-                response = self._response_if_invalid_image if "invalid_image_url" in str(e) else self._response_if_request_fail
+                if "invalid_image_url" in str(e):
+                    response = self._response_if_invalid_image
+                else:
+                    response = self._response_if_request_fail
+
                 ai_response = AIMessage(content=response)
                 state["messages"].append(ai_response)
                 state["new_messages"].append(ai_response)
                 return state
+
             return self._invoke_llm_node(state, second_attempt=True)
+
         state["messages"].append(ai_response)
         state["new_messages"].append(ai_response)
         return state
@@ -140,6 +163,7 @@ class DMAIAgent:
     def _execute_tool_node(self, state: State) -> State:
         self._logger.debug("Run node: Execute tool")
         threads = []
+
         for tool_call in state["messages"][-1].tool_calls:
             tool_id = tool_call["id"]
             tool_name = tool_call["name"]
@@ -171,7 +195,10 @@ class DMAIAgent:
 
     def _exit_node(self, state: State) -> State:
         if self._input_output_logging:
-            self._logger.debug(f'Answer:\n{state["messages"][-1].content}')
+            answer = state["messages"][-1]
+            if isinstance(answer, AIMessage):
+                answer = answer.content
+            self._logger.debug(f'Answer:\n{answer}')
 
         if self._is_memory_enabled:
             messages_to_memory = state["messages"][-self._max_memory_messages:]
@@ -187,16 +214,18 @@ class DMAIAgent:
         return state
 
     def _messages_router(self, state: State) -> str:
-        if self._is_tools_exists and state["messages"][-1].tool_calls:
-            route = "execute_tool"
-        else:
-            route = "exit"
-        return route
+        if self._output_schema:
+            return "exit"
+        elif self._is_tools_exists and state["messages"][-1].tool_calls:
+            return "execute_tool"
+        return "exit"
 
     def _init_agent(self) -> None:
         base_kwargs = {"model": self._model}
         if isinstance(self._temperature, float):
             base_kwargs["temperature"] = self._temperature
+        else:
+            ValueError("Temperature must be a float value.")
         if self._llm_provider_api_key:
             base_kwargs["api_key"] = SecretStr(self._llm_provider_api_key)
         if self._llm_provider_base_url:
@@ -220,6 +249,9 @@ class DMAIAgent:
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
             llm = llm.bind_tools(self._tools, **bind_tool_kwargs)
+
+        if self._output_schema:
+            llm = llm.with_structured_output(self._output_schema)
 
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=self._system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
@@ -255,6 +287,15 @@ class DMAIAgent:
             return max_messages_in_memory
         return cls.MAX_MEMORY_MESSAGES
 
+    @staticmethod
+    def _validate_output_schema(schema: OutputSchemaType) -> OutputSchemaType:
+        if schema is None:
+            return None
+        if isinstance(schema, type) and \
+            (type(schema).__name__ == "_TypedDictMeta" or issubclass(schema, BaseModel)):
+            return schema
+        raise ValueError("Output schema must be a TypedDict or BaseModel type, or None.")
+
     def print_graph(self) -> None:
         self._graph.get_graph().print_ascii()
 
@@ -265,14 +306,3 @@ class DMAIAgent:
                 f.write(image)
         except Exception as e:
             self._logger.error(e)
-
-    def _set_logger(self, agent_name: str) -> None:
-        params = {"name": agent_name}
-        if isinstance(self._logger_params, dict):
-            params.update(self._logger_params)
-        self._logger = DMLogger(**params)
-
-    @classmethod
-    def set_logger_params(cls, extra_params = None) -> None:
-        if isinstance(extra_params, dict) or extra_params is None:
-            cls._logger_params = extra_params
