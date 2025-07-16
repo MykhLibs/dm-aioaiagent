@@ -8,8 +8,19 @@ from .types import *
 
 
 class DMAioAIAgent(DMAIAgent):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        *args,
+        before_tool_call_callback: AsyncBeforeToolCallCallback = None,
+        after_tool_call_callback: AsyncAfterToolCallCallback = None,
+        **kwargs
+    ):
+        super().__init__(
+            *args,
+            before_tool_call_callback=before_tool_call_callback,
+            after_tool_call_callback=after_tool_call_callback,
+            **kwargs
+        )
 
     async def run(self, query: str, *args, **kwargs) -> Union[str, TypedDict, BaseModel]:
         new_messages = await self.run_messages(messages=[TextMessage(role="user", content=query)], *args, **kwargs)
@@ -79,13 +90,25 @@ class DMAioAIAgent(DMAIAgent):
             tool_args = tool_call["args"]
 
             async def tool_callback(tool_id=tool_id, tool_name=tool_name, tool_args=tool_args) -> None:
-                self._logger.debug("Invoke tool", tool_id=tool_id, tool_name=tool_name, tool_args=tool_args)
                 if tool_name in self._tool_map:
                     try:
+                        if self._before_tool_call_callback:
+                            await self._before_tool_call_callback(tool_name, tool_args)
+                    except Exception as e:
+                        self._logger.error(str(e), callback_type="before_tool_call")
+
+                    try:
+                        self._logger.debug("Invoke tool", tool_id=tool_id, tool_name=tool_name, tool_args=tool_args)
                         tool_response = await self._tool_map[tool_name].arun(tool_args)
                     except Exception as e:
-                        self._logger.error(e, tool_id=tool_id)
+                        self._logger.error(str(e), tool_id=tool_id)
                         tool_response = "Tool executed with an error!"
+
+                    try:
+                        if self._after_tool_call_callback:
+                            await self._after_tool_call_callback(tool_name, tool_args, tool_response)
+                    except Exception as e:
+                        self._logger.error(str(e), callback_type="after_tool_call")
                 else:
                     tool_response = f"Tool '{tool_name}' not found!"
                 self._logger.debug(f"Tool response:\n{tool_response}", tool_id=tool_id)

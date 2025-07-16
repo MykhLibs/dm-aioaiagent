@@ -28,6 +28,8 @@ class DMAIAgent:
         # tools
         tools: list[BaseTool] = None,
         parallel_tool_calls: bool = None,
+        before_tool_call_callback: BeforeToolCallCallback = None,
+        after_tool_call_callback: AfterToolCallCallback = None,
         # memory
         is_memory_enabled: bool = True,
         save_tools_responses_in_memory: bool = True,
@@ -55,6 +57,8 @@ class DMAIAgent:
         self._tools = tools or []
         self._is_tools_exists = bool(tools)
         self._parallel_tool_calls = parallel_tool_calls
+        self._before_tool_call_callback = before_tool_call_callback
+        self._after_tool_call_callback = after_tool_call_callback
         # memory
         self._memory_messages = []
         self._is_memory_enabled = bool(is_memory_enabled)
@@ -170,13 +174,25 @@ class DMAIAgent:
             tool_args = tool_call["args"]
 
             def tool_callback(tool_id=tool_id, tool_name=tool_name, tool_args=tool_args) -> None:
-                self._logger.debug("Invoke tool", tool_id=tool_id, tool_name=tool_name, tool_args=tool_args)
                 if tool_name in self._tool_map:
                     try:
+                        if self._before_tool_call_callback:
+                            self._before_tool_call_callback(tool_name, tool_args)
+                    except Exception as e:
+                        self._logger.error(str(e), callback_type="before_tool_call")
+
+                    try:
+                        self._logger.debug("Invoke tool", tool_id=tool_id, tool_name=tool_name, tool_args=tool_args)
                         tool_response = self._tool_map[tool_name].run(tool_args)
                     except Exception as e:
-                        self._logger.error(e, tool_id=tool_id)
+                        self._logger.error(str(e), tool_id=tool_id)
                         tool_response = "Tool executed with an error!"
+
+                    try:
+                        if self._after_tool_call_callback:
+                            self._after_tool_call_callback(tool_name, tool_args, tool_response)
+                    except Exception as e:
+                        self._logger.error(str(e), callback_type="after_tool_call")
                 else:
                     tool_response = f"Tool not found!"
                 self._logger.debug(f"Tool response:\n{tool_response}", tool_id=tool_id)
