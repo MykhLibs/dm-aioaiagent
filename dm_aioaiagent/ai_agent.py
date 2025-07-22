@@ -179,20 +179,20 @@ class DMAIAgent:
                         if self._before_tool_call_callback:
                             self._before_tool_call_callback(tool_name, tool_args)
                     except Exception as e:
-                        self._logger.error(str(e), callback_type="before_tool_call")
+                        self._logger.error(e, callback_type="before_tool_call")
 
                     try:
                         self._logger.debug("Invoke tool", tool_id=tool_id, tool_name=tool_name, tool_args=tool_args)
                         tool_response = self._tool_map[tool_name].run(tool_args)
                     except Exception as e:
-                        self._logger.error(str(e), tool_id=tool_id)
+                        self._logger.error(e, tool_id=tool_id)
                         tool_response = "Tool executed with an error!"
 
                     try:
                         if self._after_tool_call_callback:
                             self._after_tool_call_callback(tool_name, tool_args, tool_response)
                     except Exception as e:
-                        self._logger.error(str(e), callback_type="after_tool_call")
+                        self._logger.error(e, callback_type="after_tool_call")
                 else:
                     tool_response = f"Tool not found!"
                 self._logger.debug(f"Tool response:\n{tool_response}", tool_id=tool_id)
