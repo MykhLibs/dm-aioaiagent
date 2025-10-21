@@ -36,6 +36,7 @@ class DMAIAgent:
         max_memory_messages: int = MAX_MEMORY_MESSAGES,
         # other
         input_output_logging: bool = True,
+        node_execution_logging: bool = True,
         response_if_request_fail: str = "I can't provide a response right now. Please try again later.",
         response_if_invalid_image: str = "The image is unavailable or the link is incorrect.",
         # llm provider
@@ -66,6 +67,7 @@ class DMAIAgent:
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
         # other
         self._input_output_logging = bool(input_output_logging)
+        self._node_execution_logging = bool(node_execution_logging)
         self._response_if_request_fail = str(response_if_request_fail)
         self._response_if_invalid_image = str(response_if_invalid_image)
         # llm provider
@@ -142,7 +144,8 @@ class DMAIAgent:
         return state
 
     def _invoke_llm_node(self, state: State, second_attempt: bool = False) -> State:
-        self._logger.debug("Run node: Invoke LLM")
+        if self._node_execution_logging:
+            self._logger.debug("Run node: Invoke LLM")
         try:
             ai_response = self._agent.invoke({"messages": state["messages"]})
         except Exception as e:
@@ -165,7 +168,8 @@ class DMAIAgent:
         return state
 
     def _execute_tool_node(self, state: State) -> State:
-        self._logger.debug("Run node: Execute tool")
+        if self._node_execution_logging:
+            self._logger.debug("Run node: Execute tool")
         threads = []
 
         for tool_call in state["messages"][-1].tool_calls:

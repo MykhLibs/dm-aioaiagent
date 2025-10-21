@@ -58,7 +58,8 @@ class DMAioAIAgent(DMAIAgent):
         return state["new_messages"]
 
     async def _invoke_llm_node(self, state: State, second_attempt: bool = False) -> State:
-        self._logger.debug("Run node: Invoke LLM")
+        if self._node_execution_logging:
+            self._logger.debug("Run node: Invoke LLM")
         try:
             ai_response = await self._agent.ainvoke({"messages": state["messages"]})
         except Exception as e:
@@ -81,7 +82,8 @@ class DMAioAIAgent(DMAIAgent):
         return state
 
     async def _execute_tool_node(self, state: State) -> State:
-        self._logger.debug("Run node: Execute tool")
+        if self._node_execution_logging:
+            self._logger.debug("Run node: Execute tool")
         tasks = []
 
         for tool_call in state["messages"][-1].tool_calls:
