@@ -18,7 +18,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'dm-logger>=0.6.6, <0.7.0',
-        'python-dotenv>=1.0.0, <1.1.0',
+        'python-dotenv>=1.0.0',
         'pydantic>=2.9.2, <3.0.0',
         'langchain>=0.3.0, <0.4.0',
         'langchain-core>=0.3.5, <0.4.0',
@@ -30,7 +30,7 @@ setup(
         'grandalf>=0.8.0, <0.9.0',
     ],
     classifiers=[
-        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent'
     ],
