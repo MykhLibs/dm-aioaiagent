@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
+from langchain.chat_models import init_chat_model
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
@@ -242,29 +243,28 @@ class DMAIAgent:
 
     def _init_agent(self) -> None:
         base_kwargs = {"model": self._model}
-        if isinstance(self._temperature, float):
-            base_kwargs["temperature"] = self._temperature
-        else:
-            ValueError("Temperature must be a float value.")
+        if self._temperature is not None:
+            if not isinstance(self._temperature, (int, float)):
+                raise ValueError("Temperature must be a float value.")
+            base_kwargs["temperature"] = float(self._temperature)
         if self._llm_provider_api_key:
             base_kwargs["api_key"] = SecretStr(self._llm_provider_api_key)
         if self._llm_provider_base_url:
             base_kwargs["base_url"] = self._llm_provider_base_url
 
-        if self._model.startswith("claude"):
-            from langchain_anthropic import ChatAnthropic
+        llm = init_chat_model(**base_kwargs)
 
-            llm = ChatAnthropic(**base_kwargs)
+        provider = self._detect_provider(self._model)
+        if provider == "anthropic":
             bind_tool_kwargs = {"tool_choice": {"type": "auto"}}
             if isinstance(self._parallel_tool_calls, bool):
                 bind_tool_kwargs["tool_choice"]["disable_parallel_tool_use"] = not self._parallel_tool_calls
-        else:
-            from langchain_openai import ChatOpenAI
-
-            llm = ChatOpenAI(**base_kwargs)
+        elif provider == "openai":
             bind_tool_kwargs = {}
             if isinstance(self._parallel_tool_calls, bool):
                 bind_tool_kwargs["parallel_tool_calls"] = self._parallel_tool_calls
+        else:
+            bind_tool_kwargs = {}
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
@@ -276,6 +276,16 @@ class DMAIAgent:
         prompt = ChatPromptTemplate.from_messages([SystemMessage(content=self._system_message),
                                                    MessagesPlaceholder(variable_name="messages")])
         self._agent = prompt | llm
+
+    @staticmethod
+    def _detect_provider(model: str) -> str:
+        if ":" in model:
+            return model.split(":", 1)[0].replace("-", "_").lower()
+        if model.startswith(("gpt-", "o1", "o3")):
+            return "openai"
+        if model.startswith("claude"):
+            return "anthropic"
+        return ""
 
     def _init_graph(self) -> None:
         workflow = StateGraph(State)

@@ -7,6 +7,59 @@
 
 ### * Package contains both `asynchronous` and `synchronous` clients
 
+## Installation
+
+By default, the package ships with **OpenAI** support. Other providers are optional extras:
+
+```bash
+pip install dm-aioaiagent                       # OpenAI only
+pip install dm-aioaiagent[anthropic]            # + Anthropic
+pip install dm-aioaiagent[anthropic,gemini]     # several at once
+pip install dm-aioaiagent[all]                  # every supported provider
+```
+
+Available extras: `anthropic`, `gemini`, `groq`, `mistral`, `deepseek`, `ollama`, `all`.
+
+If you call a model from a provider whose package is not installed, `init_chat_model` will raise an `ImportError` with the exact `pip install` command you need.
+
+## Providers
+
+Provider resolution is delegated to LangChain's [`init_chat_model`](https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html) — the agent picks the provider automatically by model name prefix when possible. For everything else, use the `"provider:model"` mask.
+
+```python
+# Auto-detected from model prefix (rules come from LangChain's init_chat_model)
+agent = DMAioAIAgent(model="gpt-4o-mini")              # → openai
+agent = DMAioAIAgent(model="claude-3-5-sonnet-latest") # → anthropic
+agent = DMAioAIAgent(model="gemini-2.0-flash")         # → google_vertexai (see note below)
+
+# Explicit provider via "provider:model" mask
+agent = DMAioAIAgent(model="google_genai:gemini-2.0-flash")
+agent = DMAioAIAgent(model="groq:llama-3.1-70b-versatile")
+agent = DMAioAIAgent(model="mistralai:mistral-large-latest")
+agent = DMAioAIAgent(model="deepseek:deepseek-chat")
+agent = DMAioAIAgent(model="ollama:llama3.1")
+
+# OpenAI-compatible gateway (OpenRouter, Together, vLLM, LiteLLM proxy, ...)
+# Works without installing any extra — just point to the OpenAI-compatible URL.
+agent = DMAioAIAgent(
+    model="meta-llama/llama-3.1-70b-instruct",
+    llm_provider_base_url="https://openrouter.ai/api/v1",
+    llm_provider_api_key="sk-or-...",
+)
+```
+
+> **Note about Gemini.** LangChain's auto-detect maps the `gemini*` prefix to **`google_vertexai`** (Google Cloud Vertex AI, requires a GCP service account). If you have a regular **Google AI Studio** API key (`GOOGLE_API_KEY`), use the `google_genai:` mask explicitly:
+>
+> ```python
+> agent = DMAioAIAgent(model="google_genai:gemini-2.0-flash")
+> ```
+
+Supported provider keys for the `"provider:model"` mask (list inherited from LangChain): `openai`, `anthropic`, `azure_openai`, `azure_ai`, `google_vertexai`, `google_genai`, `bedrock`, `bedrock_converse`, `cohere`, `fireworks`, `together`, `mistralai`, `huggingface`, `groq`, `ollama`, `google_anthropic_vertex`, `deepseek`, `ibm`, `nvidia`, `xai`, `perplexity`.
+
+### Note about parallel tool calls
+
+`parallel_tool_calls` is currently mapped only for **OpenAI** and **Anthropic** (their APIs use different formats). For other providers the parameter is silently ignored — extend per-provider mapping if you need it.
+
 ## Usage
 
 Analogue to `DMAioAIAgent` is the synchronous client `DMAIAgent`.
@@ -23,7 +76,7 @@ if sys.platform == "win32":
 
 ### Api Key Setup
 
-You can set your OpenAI API key in the environment variable `OPENAI_API_KEY` or pass it as an argument to the agent.
+Each provider reads its API key from a dedicated environment variable, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, etc. Alternatively, pass the key explicitly via the `llm_provider_api_key` argument — useful for multi-tenant setups, custom gateways, or runtime key rotation.
 
 **Use load_dotenv to load the `.env` file.**
 
