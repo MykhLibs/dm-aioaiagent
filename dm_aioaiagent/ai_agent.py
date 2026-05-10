@@ -144,16 +144,17 @@ class DMAIAgent:
                 role = item.get("role")
                 content = item.get("content")
                 if not role or role not in self._ALLOWED_ROLES or not content:
+                    self._logger.debug("Skipped malformed input dict", role=role, content_type=type(content).__name__)
                     continue
-                if role == "ai":
-                    MessageClass = AIMessage
-                else:
-                    MessageClass = HumanMessage
-                state["messages"].append(MessageClass(content))
+                # content may be a plain str (legacy) or a list of v1 standard
+                # content blocks (multimodal: text + image/audio/video/file).
+                # Both shapes are accepted by HumanMessage/AIMessage as-is.
+                MessageClass = AIMessage if role == "ai" else HumanMessage
+                state["messages"].append(MessageClass(content=content))
             elif isinstance(item, BaseMessage):
                 state["messages"].append(item)
 
-        if self._input_output_logging:
+        if self._input_output_logging and state["messages"]:
             self._logger.debug(f'Query:\n{state["messages"][-1].content}')
         if self._is_memory_enabled:
             state["messages"] = self._memory_messages + state["messages"]
