@@ -41,8 +41,6 @@ class DMAioAIAgent(DMAIAgent):
     ) -> list[BaseMessage]:
         if ls_metadata is None:
             ls_metadata = {}
-        if isinstance(ls_run_id, uuid.UUID):
-            ls_run_id = ls_run_id
         if isinstance(ls_thread_id, uuid.UUID):
             ls_metadata["thread_id"] = ls_thread_id
 
