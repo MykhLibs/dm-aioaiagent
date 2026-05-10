@@ -279,6 +279,10 @@ class DMAIAgent:
         if self._enable_image_generation and self._wants_openai_provider(self._model):
             base_kwargs["use_responses_api"] = True
 
+        # Pre-init: Gemini image-output models must opt into the IMAGE modality.
+        if self._is_gemini_image_model(self._model):
+            base_kwargs["response_modalities"] = ["IMAGE", "TEXT"]
+
         llm = init_chat_model(**base_kwargs)
 
         provider = self._get_provider(llm)
@@ -340,6 +344,17 @@ class DMAIAgent:
             return model.split(":", 1)[0].lower() == "openai"
         m = model.lower()
         return m.startswith(("gpt-", "o1", "o3", "o4", "chatgpt"))
+
+    @staticmethod
+    def _is_gemini_image_model(model: str) -> bool:
+        # Model names like "gemini-2.5-flash-image" or
+        # "gemini-2.0-flash-preview-image-generation" — must opt into the
+        # IMAGE modality at init time, otherwise the model still answers in
+        # text only.
+        m = model.lower()
+        if ":" in m:
+            m = m.split(":", 1)[1]
+        return m.startswith("gemini") and "image" in m
 
     def _init_graph(self) -> None:
         workflow = StateGraph(State)
