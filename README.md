@@ -270,3 +270,49 @@ You can also extract images directly from any `AIMessage`:
 from dm_aioaiagent import OutputImage
 images = OutputImage.extract_from(response_message)  # list[OutputImage]
 ```
+
+### Image memory modes
+
+Images in `agent.memory_messages` (the conversation history sent to the LLM on each turn) and in `agent.images` (the property exposing AI-generated images) follow the `image_memory_mode` constructor argument:
+
+| Mode | Memory (history) | `agent.images` |
+|---|---|---|
+| `keep_last` *(default)* | last user-image kept; last AI-image kept; older → `[image]` / `[generated image]` placeholder | last AI-image kept; replaced when a new one arrives |
+| `drop` | every image (user + AI) becomes a placeholder right after the turn | only the AI-image of the **current** turn (then wiped on the next call) |
+| `keep_all` | nothing is stripped — full multimodal history | every AI-image accumulates |
+
+```python
+agent = DMAIAgent(model="gpt-4o-mini", image_memory_mode="keep_last")
+agent.run_messages([InputImage.from_file("photo.png", text="Describe.")])
+agent.run("What colour was dominant?")  # answers based on the image
+```
+
+`agent.clear_memory_messages()` clears both `memory_messages` and `images`.
+
+> Only **AI-generated** images populate `agent.images`. Images you upload via `InputImage` go into history per the rules above but are not exposed on the `images` property.
+
+### `agent.as_tool()`
+
+Wrap any agent as a `StructuredTool` so a *parent* agent can call it like any other tool — the basis for multi-agent composition. Default name is derived from `agent_name` (lowercased, non-alphanumerics replaced with `_`); `description` is required.
+
+```python
+from dm_aioaiagent import DMAIAgent
+
+# specialised image agent
+image_agent = DMAIAgent(
+    agent_name="image_drawer",
+    model="google_genai:gemini-2.5-flash-image",
+)
+
+# chat agent that delegates drawing to the image agent
+chat_agent = DMAIAgent(
+    model="google_genai:gemini-2.5-flash",
+    tools=[image_agent.as_tool(description="Generates an image from a text prompt.")],
+)
+
+chat_agent.run("Hi! Please draw a small red square.")
+# the chat agent picks the tool, the image agent draws, image lands in image_agent.images
+image_agent.images[0].save("out.png")
+```
+
+The async client (`DMAioAIAgent.as_tool`) returns a tool with both `func` and `coroutine` set, so it can be invoked from sync or async parent agents.
