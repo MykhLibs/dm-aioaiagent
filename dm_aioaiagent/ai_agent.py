@@ -19,8 +19,6 @@ from .types import *
 
 ImageMemoryMode = Literal["drop", "keep_last", "keep_all"]
 _VALID_IMAGE_MEMORY_MODES = ("drop", "keep_last", "keep_all")
-
-
 INVALID_IMAGE_ERROR_MARKERS = (
     "invalid_image_url",
     "Could not process image",
@@ -378,20 +376,28 @@ class DMAIAgent:
         if self._enable_image_generation and self._wants_openai_provider(self._model):
             base_kwargs["use_responses_api"] = True
 
-        # Pre-init: Gemini image-output models must opt into the IMAGE modality.
-        if self._is_gemini_image_model(self._model):
+        # Pre-init: Gemini image-output models also need the IMAGE modality —
+        # but only if the user opted into image generation via the master flag.
+        is_gemini_image = self._is_gemini_image_model(self._model)
+        if self._enable_image_generation and is_gemini_image:
             base_kwargs["response_modalities"] = ["IMAGE", "TEXT"]
 
         llm = init_chat_model(**base_kwargs)
 
         provider = self._get_provider(llm)
 
+        # Cross-provider warnings for image-generation flag mismatches.
         if self._enable_image_generation and self._output_schema:
             self._logger.warning(
                 "output_schema disables tools — enable_image_generation will be ignored."
             )
         if self._enable_image_generation and provider == "anthropic":
             self._logger.warning("Claude does not support image generation; the flag is ignored.")
+        if not self._enable_image_generation and is_gemini_image:
+            self._logger.warning(
+                f"Model {self._model!r} is image-capable but enable_image_generation=False "
+                f"— set the flag to True to let it draw."
+            )
 
         if provider == "anthropic":
             bind_tool_kwargs = {"tool_choice": {"type": "auto"}}
