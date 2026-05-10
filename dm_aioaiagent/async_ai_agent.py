@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool
 
-from .ai_agent import DMAIAgent, INVALID_IMAGE_ERROR_MARKERS
+from .ai_agent import DMAIAgent
 from .types import *
 
 
@@ -66,7 +66,7 @@ class DMAioAIAgent(DMAIAgent):
             self._logger.error(e)
             if second_attempt:
                 err_str = str(e)
-                if any(m in err_str for m in INVALID_IMAGE_ERROR_MARKERS):
+                if any(m in err_str for m in self._INVALID_IMAGE_ERROR_MARKERS):
                     response = self._response_if_invalid_image
                 else:
                     response = self._response_if_request_fail

@@ -17,19 +17,17 @@ from .output_image import OutputImage
 from .types import *
 
 
-ImageMemoryMode = Literal["drop", "keep_last", "keep_all"]
-_VALID_IMAGE_MEMORY_MODES = ("drop", "keep_last", "keep_all")
-INVALID_IMAGE_ERROR_MARKERS = (
-    "invalid_image_url",
-    "Could not process image",
-    "Unable to process input image",
-    "INVALID_ARGUMENT",
-)
-
-
 class DMAIAgent:
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
+    ImageMemoryMode = Literal["drop", "keep_last", "keep_all"]
     _ALLOWED_ROLES = ("user", "ai")
+    _VALID_IMAGE_MEMORY_MODES = ("drop", "keep_last", "keep_all")
+    _INVALID_IMAGE_ERROR_MARKERS = (
+        "invalid_image_url",
+        "Could not process image",
+        "Unable to process input image",
+        "INVALID_ARGUMENT",
+    )
 
     def __init__(
         self,
@@ -222,7 +220,7 @@ class DMAIAgent:
             self._logger.error(e)
             if second_attempt:
                 err_str = str(e)
-                if any(m in err_str for m in INVALID_IMAGE_ERROR_MARKERS):
+                if any(m in err_str for m in self._INVALID_IMAGE_ERROR_MARKERS):
                     response = self._response_if_invalid_image
                 else:
                     response = self._response_if_request_fail
@@ -491,12 +489,12 @@ class DMAIAgent:
             return max_messages_in_memory
         return cls.MAX_MEMORY_MESSAGES
 
-    @staticmethod
-    def _validate_image_memory_mode(mode: str) -> str:
-        if mode in _VALID_IMAGE_MEMORY_MODES:
+    @classmethod
+    def _validate_image_memory_mode(cls, mode: str) -> str:
+        if mode in cls._VALID_IMAGE_MEMORY_MODES:
             return mode
         raise ValueError(
-            f"image_memory_mode must be one of {_VALID_IMAGE_MEMORY_MODES}, got {mode!r}."
+            f"image_memory_mode must be one of {cls._VALID_IMAGE_MEMORY_MODES}, got {mode!r}."
         )
 
     @staticmethod
