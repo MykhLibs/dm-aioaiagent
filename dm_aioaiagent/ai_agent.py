@@ -43,6 +43,8 @@ class DMAIAgent:
         is_memory_enabled: bool = True,
         save_tools_responses_in_memory: bool = True,
         max_memory_messages: int = MAX_MEMORY_MESSAGES,
+        # multimodal
+        enable_image_generation: bool = False,
         # other
         input_output_logging: bool = True,
         node_execution_logging: bool = True,
@@ -74,6 +76,8 @@ class DMAIAgent:
         self._is_memory_enabled = bool(is_memory_enabled)
         self._save_tools_responses_in_memory = bool(save_tools_responses_in_memory)
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
+        # multimodal
+        self._enable_image_generation = bool(enable_image_generation)
         # other
         self._input_output_logging = bool(input_output_logging)
         self._node_execution_logging = bool(node_execution_logging)
@@ -269,9 +273,23 @@ class DMAIAgent:
         if self._llm_provider_base_url:
             base_kwargs["base_url"] = self._llm_provider_base_url
 
+        # Pre-init: OpenAI image generation needs the Responses API.
+        # Detect the requested provider from the model string (init_chat_model
+        # itself does the same) so we can flip use_responses_api before init.
+        if self._enable_image_generation and self._wants_openai_provider(self._model):
+            base_kwargs["use_responses_api"] = True
+
         llm = init_chat_model(**base_kwargs)
 
         provider = self._get_provider(llm)
+
+        if self._enable_image_generation and self._output_schema:
+            self._logger.warning(
+                "output_schema disables tools — enable_image_generation will be ignored."
+            )
+        if self._enable_image_generation and provider == "anthropic":
+            self._logger.warning("Claude does not support image generation; the flag is ignored.")
+
         if provider == "anthropic":
             bind_tool_kwargs = {"tool_choice": {"type": "auto"}}
             if isinstance(self._parallel_tool_calls, bool):
@@ -285,7 +303,13 @@ class DMAIAgent:
 
         if self._is_tools_exists:
             self._tool_map = {t.name: t for t in self._tools}
-            llm = llm.bind_tools(self._tools, **bind_tool_kwargs)
+
+        tools_to_bind: list = list(self._tools)
+        if self._enable_image_generation and provider == "openai" and not self._output_schema:
+            tools_to_bind.append({"type": "image_generation"})
+
+        if tools_to_bind:
+            llm = llm.bind_tools(tools_to_bind, **bind_tool_kwargs)
 
         if self._output_schema:
             llm = llm.with_structured_output(self._output_schema)
@@ -306,6 +330,16 @@ class DMAIAgent:
         if provider == "vertexai":
             provider = "googlegenerativeai"
         return provider
+
+    @staticmethod
+    def _wants_openai_provider(model: str) -> bool:
+        # Used pre-init for kwargs that must be set on the constructor
+        # (use_responses_api). OpenAI prefixes are stable; other providers go
+        # through post-init _get_provider().
+        if ":" in model:
+            return model.split(":", 1)[0].lower() == "openai"
+        m = model.lower()
+        return m.startswith(("gpt-", "o1", "o3", "o4", "chatgpt"))
 
     def _init_graph(self) -> None:
         workflow = StateGraph(State)
