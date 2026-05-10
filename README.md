@@ -212,3 +212,61 @@ agent.run_messages(messages)
 ```
 
 > **`from_url` caveats.** Some providers (notably Anthropic and Gemini) may have stricter rules about remote URLs (allowed hosts, public reachability, redirects). When in doubt — read the file yourself and use `from_file` / `from_bytes`.
+
+### Image generation and edit
+
+The agent can also produce images. The mechanism differs by provider, so two flavours of model are supported:
+
+#### OpenAI — `enable_image_generation=True`
+
+Pass the flag to a normal chat-capable OpenAI model (`gpt-4.1`, `gpt-5`, etc.). Under the hood the agent enables the **Responses API** and binds OpenAI's built-in `image_generation` tool — the model decides on its own when to call it. Plain text turns stay text.
+
+```python
+from dm_aioaiagent import DMAIAgent, OutputImage
+
+agent = DMAIAgent(model="gpt-4.1", enable_image_generation=True)
+
+agent.run("Draw a small red square on a white background.")
+
+# Generated images surface on agent.images
+for i, img in enumerate(agent.images):
+    img.save(f"out_{i}.png")
+```
+
+The same flag can be combined with regular tools — they coexist. `enable_image_generation=True` is **safe** even when the user only asks for text: the model uses `tool_choice="auto"`.
+
+#### Gemini — image-output models
+
+For Gemini you pick a model whose name contains `image` — e.g. `gemini-2.5-flash-image` (Nano Banana). The agent auto-injects `response_modalities=["IMAGE","TEXT"]` so the model is allowed to draw.
+
+```python
+agent = DMAIAgent(model="google_genai:gemini-2.5-flash-image")
+
+agent.run("Generate a small red square.")
+agent.images[0].save("out.png")
+```
+
+> **Heads up.** A Gemini image-output model is **not** a general chat model — it tends to draw on every turn, including plain greetings. For mixed workloads use a **two-agent pattern**: a chat agent with the image agent attached as a tool. See [`agent.as_tool()`](#agentas_tool) below.
+
+#### Anthropic — vision only
+
+Claude **cannot generate** images. If you pass `enable_image_generation=True` to a Claude model, the flag is silently ignored and a warning is logged. Image input (vision) works as usual.
+
+### Working with generated images — `OutputImage`
+
+Generated images live in `agent.images` as `OutputImage` instances:
+
+```python
+img = agent.images[0]
+img.bytes        # raw image bytes
+img.mime_type    # e.g. "image/png"
+img.save("out.png")
+img.to_base64()
+```
+
+You can also extract images directly from any `AIMessage`:
+
+```python
+from dm_aioaiagent import OutputImage
+images = OutputImage.extract_from(response_message)  # list[OutputImage]
+```
