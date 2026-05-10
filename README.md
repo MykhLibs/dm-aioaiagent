@@ -177,32 +177,38 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Image vision
+### Working with images — input
+
+Use the `InputImage` helper to attach an image to a user message in a way that works **across providers** (OpenAI, Anthropic, Gemini). Each factory returns a ready-to-send `HumanMessage` whose `.content` is a list of LangChain v1 standard content blocks.
 
 ```python
-from dm_aioaiagent import DMAIAgent, OpenAIImageMessageContent
+from dm_aioaiagent import DMAIAgent, InputImage
 
+agent = DMAIAgent(agent_name="image_vision", model="gpt-4o-mini")
 
-def main():
-    # create an agent
-    ai_agent = DMAIAgent(agent_name="image_vision", model="gpt-4o")
+# from a local file (mime type inferred from extension)
+msg_file = InputImage.from_file("photo.png", text="What is in the picture?")
 
-    # create an image message content
-    # NOTE: text argument is optional
-    img_content = OpenAIImageMessageContent(image_url="https://your.domain/image",
-                                            text="Hello, what is shown in the photo?")
+# from a remote URL
+msg_url = InputImage.from_url("https://your.domain/image.png", text="Describe it.")
 
-    # define the conversation messages
-    messages = [
-        {"role": "user", "content": "Hello!"},
-        {"role": "user", "content": img_content},
-    ]
+# from raw bytes / base64 (mime_type required)
+with open("photo.png", "rb") as f:
+    msg_bytes = InputImage.from_bytes(f.read(), mime_type="image/png", text="Describe.")
+msg_b64 = InputImage.from_base64("aGVsbG8=", mime_type="image/png")
 
-    # call an agent
-    new_messages = ai_agent.run_messages(messages)
-    answer = new_messages[-1].content
-
-
-if __name__ == "__main__":
-    main()
+answer = agent.run_messages([msg_file])
+print(answer[-1].content_blocks)  # list of standard blocks
 ```
+
+**Multiple images per turn.** Each factory builds **one** image message. To attach several images to a single user turn, pass several messages:
+
+```python
+messages = [
+    InputImage.from_file("front.png", text="Compare these two views:"),
+    InputImage.from_file("back.png"),
+]
+agent.run_messages(messages)
+```
+
+> **`from_url` caveats.** Some providers (notably Anthropic and Gemini) may have stricter rules about remote URLs (allowed hosts, public reachability, redirects). When in doubt — read the file yourself and use `from_file` / `from_bytes`.
