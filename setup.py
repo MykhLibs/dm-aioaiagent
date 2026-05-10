@@ -46,6 +46,7 @@ setup(
             'langchain-deepseek>=1.0.0, <2.0.0',
             'langchain-ollama>=1.0.0, <2.0.0',
         ],
+        'test': ['Pillow>=10.0.0, <12.0.0'],
     },
     classifiers=[
         'Programming Language :: Python :: 3.9',
