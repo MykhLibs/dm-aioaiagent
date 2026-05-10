@@ -1,12 +1,13 @@
 import copy
 import os
+import re
 import uuid
-from typing import Any, Literal
-from pydantic import SecretStr
+from typing import Any, Literal, Optional, Type
+from pydantic import BaseModel, Field, SecretStr
 from itertools import dropwhile
 from threading import Thread
 from langchain.chat_models import init_chat_model
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph
@@ -61,7 +62,8 @@ class DMAIAgent:
         llm_provider_api_key: str = "",
         llm_provider_base_url: str = ""
     ):
-        self._logger = DMLogger(agent_name)
+        self._agent_name = str(agent_name)
+        self._logger = DMLogger(self._agent_name)
 
         # general
         self._system_message = str(system_message)
@@ -153,6 +155,41 @@ class DMAIAgent:
     def clear_memory_messages(self) -> None:
         self._memory_messages.clear()
         self._images.clear()
+
+    def as_tool(
+        self,
+        *,
+        description: str,
+        name: Optional[str] = None,
+        args_schema: Optional[Type[BaseModel]] = None,
+    ) -> BaseTool:
+        # Wraps this agent as a StructuredTool callable from another agent
+        # (multi-agent composition). Default tool name is derived from
+        # `agent_name` by lowercasing and replacing every non-[a-z0-9] run
+        # with a single underscore (matches the regex `[a-z0-9_]+`). Default
+        # args_schema is a single `query: str` field. `description` is required
+        # — without it the parent model has no signal for when to call.
+        if not description:
+            raise ValueError("`description` is required for as_tool().")
+        tool_name = name if name else self._sanitize_tool_name(self._agent_name)
+        schema = args_schema if args_schema is not None else self._default_tool_args_schema()
+        return StructuredTool.from_function(
+            name=tool_name,
+            description=description,
+            args_schema=schema,
+            func=lambda query, **kw: self.run(query),
+        )
+
+    @staticmethod
+    def _sanitize_tool_name(raw: str) -> str:
+        sanitized = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
+        return sanitized or "agent"
+
+    @staticmethod
+    def _default_tool_args_schema() -> Type[BaseModel]:
+        class _AgentToolInput(BaseModel):
+            query: str = Field(..., description="User query for the wrapped agent.")
+        return _AgentToolInput
 
     def _prepare_messages_node(self, state: State) -> State:
         messages = state["messages"] or [{"role": "user", "content": ""}]

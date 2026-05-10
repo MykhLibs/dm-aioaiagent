@@ -1,7 +1,9 @@
 import uuid
 import asyncio
-from typing import Any
+from typing import Any, Optional, Type
+from pydantic import BaseModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import BaseTool, StructuredTool
 
 from .ai_agent import DMAIAgent, INVALID_IMAGE_ERROR_MARKERS
 from .types import *
@@ -122,3 +124,29 @@ class DMAioAIAgent(DMAIAgent):
 
         await asyncio.gather(*tasks)
         return state
+
+    def as_tool(
+        self,
+        *,
+        description: str,
+        name: Optional[str] = None,
+        args_schema: Optional[Type[BaseModel]] = None,
+    ) -> BaseTool:
+        if not description:
+            raise ValueError("`description` is required for as_tool().")
+        tool_name = name if name else self._sanitize_tool_name(self._agent_name)
+        schema = args_schema if args_schema is not None else self._default_tool_args_schema()
+
+        async def _arun(query: str, **kw):
+            return await self.run(query)
+
+        def _run_sync(query: str, **kw):
+            return asyncio.run(self.run(query))
+
+        return StructuredTool.from_function(
+            name=tool_name,
+            description=description,
+            args_schema=schema,
+            func=_run_sync,
+            coroutine=_arun,
+        )
