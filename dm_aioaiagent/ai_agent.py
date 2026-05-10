@@ -255,6 +255,16 @@ class DMAIAgent:
                 answer = answer.content
             self._logger.debug(f'Answer:\n{answer}')
 
+        last = state["messages"][-1] if state["messages"] else None
+        new_imgs = OutputImage.extract_from(last) if isinstance(last, AIMessage) else []
+        if self._image_memory_mode == "drop":
+            self._images = list(new_imgs)
+        elif self._image_memory_mode == "keep_last":
+            if new_imgs:
+                self._images = list(new_imgs)
+        else:  # keep_all
+            self._images.extend(new_imgs)
+
         if self._is_memory_enabled:
             messages_to_memory = state["messages"][-self._max_memory_messages:]
             if self._save_tools_responses_in_memory:
