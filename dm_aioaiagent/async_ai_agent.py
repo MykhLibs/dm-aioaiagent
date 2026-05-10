@@ -3,7 +3,7 @@ import asyncio
 from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage
 
-from .ai_agent import DMAIAgent
+from .ai_agent import DMAIAgent, INVALID_IMAGE_ERROR_MARKERS
 from .types import *
 
 
@@ -63,7 +63,8 @@ class DMAioAIAgent(DMAIAgent):
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
-                if "invalid_image_url" in str(e):
+                err_str = str(e)
+                if any(m in err_str for m in INVALID_IMAGE_ERROR_MARKERS):
                     response = self._response_if_invalid_image
                 else:
                     response = self._response_if_request_fail

@@ -14,6 +14,14 @@ from dm_logger import DMLogger
 from .types import *
 
 
+INVALID_IMAGE_ERROR_MARKERS = (
+    "invalid_image_url",
+    "Could not process image",
+    "Unable to process input image",
+    "INVALID_ARGUMENT",
+)
+
+
 class DMAIAgent:
     MAX_MEMORY_MESSAGES = 20  # Only INT greater than 0
     _ALLOWED_ROLES = ("user", "ai")
@@ -159,7 +167,8 @@ class DMAIAgent:
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
-                if "invalid_image_url" in str(e):
+                err_str = str(e)
+                if any(m in err_str for m in INVALID_IMAGE_ERROR_MARKERS):
                     response = self._response_if_invalid_image
                 else:
                     response = self._response_if_request_fail
