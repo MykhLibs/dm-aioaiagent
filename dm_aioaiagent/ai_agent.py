@@ -1,3 +1,4 @@
+import copy
 import os
 import uuid
 from typing import Any, Literal
@@ -267,6 +268,7 @@ class DMAIAgent:
 
         if self._is_memory_enabled:
             messages_to_memory = state["messages"][-self._max_memory_messages:]
+            messages_to_memory = self._apply_image_memory_mode(messages_to_memory)
             if self._save_tools_responses_in_memory:
                 # drop ToolsMessages from start of list
                 self._memory_messages = list(dropwhile(lambda x: isinstance(x, ToolMessage), messages_to_memory))
@@ -277,6 +279,43 @@ class DMAIAgent:
                         continue
                     self._memory_messages.append(mes)
         return state
+
+    def _apply_image_memory_mode(self, messages: list) -> list:
+        # Returns a list of messages with image blocks stripped according to
+        # self._image_memory_mode. ToolMessages are never touched. Original
+        # message objects are deep-copied before mutation, so callers holding
+        # references (notably state["new_messages"]) see untouched content.
+        if self._image_memory_mode == "keep_all":
+            return list(messages)
+
+        last_user_image_idx = -1
+        last_ai_image_idx = -1
+        for i, m in enumerate(messages):
+            if isinstance(m, ToolMessage) or not isinstance(m.content, list):
+                continue
+            if not any(isinstance(b, dict) and b.get("type") == "image" for b in m.content):
+                continue
+            if isinstance(m, HumanMessage):
+                last_user_image_idx = i
+            elif isinstance(m, AIMessage):
+                last_ai_image_idx = i
+
+        result = []
+        for i, m in enumerate(messages):
+            if isinstance(m, ToolMessage) or not isinstance(m.content, list):
+                result.append(m)
+                continue
+            if self._image_memory_mode == "keep_last" and i in (last_user_image_idx, last_ai_image_idx):
+                result.append(m)
+                continue
+            if not any(isinstance(b, dict) and b.get("type") == "image" for b in m.content):
+                result.append(m)
+                continue
+            placeholder = {"type": "text", "text": "[generated image]" if isinstance(m, AIMessage) else "[image]"}
+            m_copy = copy.deepcopy(m)
+            m_copy.content = [placeholder if (isinstance(b, dict) and b.get("type") == "image") else b for b in m_copy.content]
+            result.append(m_copy)
+        return result
 
     def _messages_router(self, state: State) -> str:
         if self._output_schema:
