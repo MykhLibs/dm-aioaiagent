@@ -240,7 +240,7 @@ class DMAIAgent:
         return "exit"
 
     def _init_agent(self) -> None:
-        base_kwargs = {"model": self._model}
+        base_kwargs = {"model": self._model, "output_version": "v1"}
         if self._temperature is not None:
             if not isinstance(self._temperature, (int, float)):
                 raise ValueError("Temperature must be a float value.")
@@ -252,7 +252,7 @@ class DMAIAgent:
 
         llm = init_chat_model(**base_kwargs)
 
-        provider = self._detect_provider(self._model)
+        provider = self._get_provider(llm)
         if provider == "anthropic":
             bind_tool_kwargs = {"tool_choice": {"type": "auto"}}
             if isinstance(self._parallel_tool_calls, bool):
@@ -276,14 +276,17 @@ class DMAIAgent:
         self._agent = prompt | llm
 
     @staticmethod
-    def _detect_provider(model: str) -> str:
-        if ":" in model:
-            return model.split(":", 1)[0].replace("-", "_").lower()
-        if model.startswith(("gpt-", "o1", "o3")):
-            return "openai"
-        if model.startswith("claude"):
-            return "anthropic"
-        return ""
+    def _get_provider(llm) -> str:
+        # Derive provider tag from the chat-model class name: strip "Chat" prefix
+        # and lowercase. Vertex AI is aliased to Google Generative AI — they are
+        # the same provider for our branching purposes.
+        name = type(llm).__name__
+        if name.startswith("Chat"):
+            name = name[4:]
+        provider = name.lower()
+        if provider == "vertexai":
+            provider = "googlegenerativeai"
+        return provider
 
     def _init_graph(self) -> None:
         workflow = StateGraph(State)
