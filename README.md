@@ -217,14 +217,16 @@ agent.run_messages(messages)
 
 The agent can also produce images. The mechanism differs by provider, so two flavours of model are supported:
 
+`enable_image_generation` is the **single master switch** for image output across providers — image generation is off by default, and you opt in with one flag. The flag's effect is provider-specific (different APIs underneath), but the semantics are uniform: turn it on → the agent can draw, leave it off → it can't.
+
 #### OpenAI — `enable_image_generation=True`
 
-Pass the flag to a normal chat-capable OpenAI model (`gpt-4.1`, `gpt-5`, etc.). Under the hood the agent enables the **Responses API** and binds OpenAI's built-in `image_generation` tool — the model decides on its own when to call it. Plain text turns stay text.
+Pass the flag to a normal chat-capable OpenAI model (`gpt-5`, `gpt-5-mini`, etc.). Under the hood the agent enables the **Responses API** and binds OpenAI's built-in `image_generation` tool — the model decides on its own when to call it. Plain text turns stay text.
 
 ```python
 from dm_aioaiagent import DMAIAgent, OutputImage
 
-agent = DMAIAgent(model="gpt-4.1", enable_image_generation=True)
+agent = DMAIAgent(model="gpt-5-mini", enable_image_generation=True)
 
 agent.run("Draw a small red square on a white background.")
 
@@ -235,16 +237,23 @@ for i, img in enumerate(agent.images):
 
 The same flag can be combined with regular tools — they coexist. `enable_image_generation=True` is **safe** even when the user only asks for text: the model uses `tool_choice="auto"`.
 
-#### Gemini — image-output models
+> Older OpenAI models (`gpt-4o`, `gpt-4.1`, etc.) require **organization verification** at platform.openai.com before they will accept the `image_generation` tool. The `gpt-5` family works on a fresh API key without verification.
 
-For Gemini you pick a model whose name contains `image` — e.g. `gemini-2.5-flash-image` (Nano Banana). The agent auto-injects `response_modalities=["IMAGE","TEXT"]` so the model is allowed to draw.
+#### Gemini — image-output models + the same flag
+
+For Gemini you pick a model whose name contains `image` — e.g. `gemini-2.5-flash-image` (Nano Banana) — **and** turn the flag on. The agent then injects `response_modalities=["IMAGE", "TEXT"]` so the model is allowed to draw.
 
 ```python
-agent = DMAIAgent(model="google_genai:gemini-2.5-flash-image")
+agent = DMAIAgent(
+    model="google_genai:gemini-2.5-flash-image",
+    enable_image_generation=True,
+)
 
 agent.run("Generate a small red square.")
 agent.images[0].save("out.png")
 ```
+
+If you pick a Gemini image model but forget the flag, the agent logs a warning (`"... is image-capable but enable_image_generation=False — set the flag to True to let it draw."`) and stays in text-only mode.
 
 > **Heads up.** A Gemini image-output model is **not** a general chat model — it tends to draw on every turn, including plain greetings. For mixed workloads use a **two-agent pattern**: a chat agent with the image agent attached as a tool. See [`agent.as_tool()`](#agentas_tool) below.
 
@@ -302,6 +311,7 @@ from dm_aioaiagent import DMAIAgent
 image_agent = DMAIAgent(
     agent_name="image_drawer",
     model="google_genai:gemini-2.5-flash-image",
+    enable_image_generation=True,
 )
 
 # chat agent that delegates drawing to the image agent
