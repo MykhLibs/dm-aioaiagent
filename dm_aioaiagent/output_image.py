@@ -2,7 +2,7 @@ import base64
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 from langchain_core.messages import BaseMessage
 
@@ -39,6 +39,7 @@ class OutputImage:
             if not isinstance(block, dict) or block.get("type") != "image":
                 continue
             mime_type = block.get("mime_type") or "image/png"
+            data: Optional[bytes] = None
             if block.get("base64"):
                 try:
                     data = base64.b64decode(block["base64"])
@@ -53,7 +54,7 @@ class OutputImage:
                             mime_type = ct.split(";", 1)[0].strip()
                 except Exception:
                     continue
-            else:
+            if data is None:
                 continue
             result.append(cls(bytes=data, mime_type=mime_type))
         return result
