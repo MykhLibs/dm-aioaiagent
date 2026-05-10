@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import Any
+from typing import Any, Literal
 from pydantic import SecretStr
 from itertools import dropwhile
 from threading import Thread
@@ -11,7 +11,12 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langgraph.graph import StateGraph
 from dm_logger import DMLogger
 
+from .output_image import OutputImage
 from .types import *
+
+
+ImageMemoryMode = Literal["drop", "keep_last", "keep_all"]
+_VALID_IMAGE_MEMORY_MODES = ("drop", "keep_last", "keep_all")
 
 
 INVALID_IMAGE_ERROR_MARKERS = (
@@ -45,6 +50,7 @@ class DMAIAgent:
         max_memory_messages: int = MAX_MEMORY_MESSAGES,
         # multimodal
         enable_image_generation: bool = False,
+        image_memory_mode: ImageMemoryMode = "keep_last",
         # other
         input_output_logging: bool = True,
         node_execution_logging: bool = True,
@@ -78,6 +84,8 @@ class DMAIAgent:
         self._max_memory_messages = self._validate_max_memory_messages(max_memory_messages)
         # multimodal
         self._enable_image_generation = bool(enable_image_generation)
+        self._image_memory_mode = self._validate_image_memory_mode(image_memory_mode)
+        self._images: list[OutputImage] = []
         # other
         self._input_output_logging = bool(input_output_logging)
         self._node_execution_logging = bool(node_execution_logging)
@@ -137,8 +145,13 @@ class DMAIAgent:
     def memory_messages(self) -> list[BaseMessage]:
         return self._memory_messages
 
+    @property
+    def images(self) -> tuple[OutputImage, ...]:
+        return tuple(self._images)
+
     def clear_memory_messages(self) -> None:
         self._memory_messages.clear()
+        self._images.clear()
 
     def _prepare_messages_node(self, state: State) -> State:
         messages = state["messages"] or [{"role": "user", "content": ""}]
@@ -385,6 +398,14 @@ class DMAIAgent:
         if isinstance(max_messages_in_memory, int) and max_messages_in_memory > 0:
             return max_messages_in_memory
         return cls.MAX_MEMORY_MESSAGES
+
+    @staticmethod
+    def _validate_image_memory_mode(mode: str) -> str:
+        if mode in _VALID_IMAGE_MEMORY_MODES:
+            return mode
+        raise ValueError(
+            f"image_memory_mode must be one of {_VALID_IMAGE_MEMORY_MODES}, got {mode!r}."
+        )
 
     @staticmethod
     def _validate_output_schema(schema: OutputSchemaType) -> OutputSchemaType:
