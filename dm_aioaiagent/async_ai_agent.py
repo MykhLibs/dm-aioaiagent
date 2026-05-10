@@ -1,7 +1,9 @@
 import uuid
 import asyncio
-from typing import Any
+from typing import Any, Optional, Type
+from pydantic import BaseModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import BaseTool, StructuredTool
 
 from .ai_agent import DMAIAgent
 from .types import *
@@ -27,7 +29,7 @@ class DMAioAIAgent(DMAIAgent):
 
         last_message = new_messages[-1]
         if isinstance(last_message, AIMessage):
-            return last_message.content
+            return self._extract_text(last_message)
         return last_message
 
     async def run_messages(
@@ -41,8 +43,6 @@ class DMAioAIAgent(DMAIAgent):
     ) -> list[BaseMessage]:
         if ls_metadata is None:
             ls_metadata = {}
-        if isinstance(ls_run_id, uuid.UUID):
-            ls_run_id = ls_run_id
         if isinstance(ls_thread_id, uuid.UUID):
             ls_metadata["thread_id"] = ls_thread_id
 
@@ -65,7 +65,8 @@ class DMAioAIAgent(DMAIAgent):
         except Exception as e:
             self._logger.error(e)
             if second_attempt:
-                if "invalid_image_url" in str(e):
+                err_str = str(e)
+                if any(m in err_str for m in self._INVALID_IMAGE_ERROR_MARKERS):
                     response = self._response_if_invalid_image
                 else:
                     response = self._response_if_request_fail
@@ -123,3 +124,29 @@ class DMAioAIAgent(DMAIAgent):
 
         await asyncio.gather(*tasks)
         return state
+
+    def as_tool(
+        self,
+        *,
+        description: str,
+        name: Optional[str] = None,
+        args_schema: Optional[Type[BaseModel]] = None,
+    ) -> BaseTool:
+        if not description:
+            raise ValueError("`description` is required for as_tool().")
+        tool_name = name if name else self._sanitize_tool_name(self._agent_name)
+        schema = args_schema if args_schema is not None else self._default_tool_args_schema()
+
+        async def _arun(query: str, **kw):
+            return await self.run(query)
+
+        def _run_sync(query: str, **kw):
+            return asyncio.run(self.run(query))
+
+        return StructuredTool.from_function(
+            name=tool_name,
+            description=description,
+            args_schema=schema,
+            func=_run_sync,
+            coroutine=_arun,
+        )

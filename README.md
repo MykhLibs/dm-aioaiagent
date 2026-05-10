@@ -177,32 +177,152 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Image vision
+### Working with images — input
+
+Use the `InputImage` helper to attach an image to a user message in a way that works **across providers** (OpenAI, Anthropic, Gemini). Each factory returns a ready-to-send `HumanMessage` whose `.content` is a list of LangChain v1 standard content blocks.
 
 ```python
-from dm_aioaiagent import DMAIAgent, OpenAIImageMessageContent
+from dm_aioaiagent import DMAIAgent, InputImage
 
+agent = DMAIAgent(agent_name="image_vision", model="gpt-4o-mini")
 
-def main():
-    # create an agent
-    ai_agent = DMAIAgent(agent_name="image_vision", model="gpt-4o")
+# from a local file (mime type inferred from extension)
+msg_file = InputImage.from_file("photo.png", text="What is in the picture?")
 
-    # create an image message content
-    # NOTE: text argument is optional
-    img_content = OpenAIImageMessageContent(image_url="https://your.domain/image",
-                                            text="Hello, what is shown in the photo?")
+# from a remote URL
+msg_url = InputImage.from_url("https://your.domain/image.png", text="Describe it.")
 
-    # define the conversation messages
-    messages = [
-        {"role": "user", "content": "Hello!"},
-        {"role": "user", "content": img_content},
-    ]
+# from raw bytes / base64 (mime_type required)
+with open("photo.png", "rb") as f:
+    msg_bytes = InputImage.from_bytes(f.read(), mime_type="image/png", text="Describe.")
+msg_b64 = InputImage.from_base64("aGVsbG8=", mime_type="image/png")
 
-    # call an agent
-    new_messages = ai_agent.run_messages(messages)
-    answer = new_messages[-1].content
-
-
-if __name__ == "__main__":
-    main()
+answer = agent.run_messages([msg_file])
+print(answer[-1].content_blocks)  # list of standard blocks
 ```
+
+**Multiple images per turn.** Each factory builds **one** image message. To attach several images to a single user turn, pass several messages:
+
+```python
+messages = [
+    InputImage.from_file("front.png", text="Compare these two views:"),
+    InputImage.from_file("back.png"),
+]
+agent.run_messages(messages)
+```
+
+> **`from_url` caveats.** Some providers (notably Anthropic and Gemini) may have stricter rules about remote URLs (allowed hosts, public reachability, redirects). When in doubt — read the file yourself and use `from_file` / `from_bytes`.
+
+### Image generation and edit
+
+The agent can also produce images. The mechanism differs by provider, so two flavours of model are supported:
+
+`enable_image_generation` is the **single master switch** for image output across providers — image generation is off by default, and you opt in with one flag. The flag's effect is provider-specific (different APIs underneath), but the semantics are uniform: turn it on → the agent can draw, leave it off → it can't.
+
+#### OpenAI — `enable_image_generation=True`
+
+Pass the flag to a normal chat-capable OpenAI model (`gpt-5`, `gpt-5-mini`, etc.). Under the hood the agent enables the **Responses API** and binds OpenAI's built-in `image_generation` tool — the model decides on its own when to call it. Plain text turns stay text.
+
+```python
+from dm_aioaiagent import DMAIAgent, OutputImage
+
+agent = DMAIAgent(model="gpt-5-mini", enable_image_generation=True)
+
+agent.run("Draw a small red square on a white background.")
+
+# Generated images surface on agent.images
+for i, img in enumerate(agent.images):
+    img.save(f"out_{i}.png")
+```
+
+The same flag can be combined with regular tools — they coexist. `enable_image_generation=True` is **safe** even when the user only asks for text: the model uses `tool_choice="auto"`.
+
+> Older OpenAI models (`gpt-4o`, `gpt-4.1`, etc.) require **organization verification** at platform.openai.com before they will accept the `image_generation` tool. The `gpt-5` family works on a fresh API key without verification.
+
+#### Gemini — image-output models + the same flag
+
+For Gemini you pick a model whose name contains `image` — e.g. `gemini-2.5-flash-image` (Nano Banana) — **and** turn the flag on. The agent then injects `response_modalities=["IMAGE", "TEXT"]` so the model is allowed to draw.
+
+```python
+agent = DMAIAgent(
+    model="google_genai:gemini-2.5-flash-image",
+    enable_image_generation=True,
+)
+
+agent.run("Generate a small red square.")
+agent.images[0].save("out.png")
+```
+
+If you pick a Gemini image model but forget the flag, the agent logs a warning (`"... is image-capable but enable_image_generation=False — set the flag to True to let it draw."`) and stays in text-only mode.
+
+> **Heads up.** A Gemini image-output model is **not** a general chat model — it tends to draw on every turn, including plain greetings. For mixed workloads use a **two-agent pattern**: a chat agent with the image agent attached as a tool. See [`agent.as_tool()`](#agentas_tool) below.
+
+#### Anthropic — vision only
+
+Claude **cannot generate** images. If you pass `enable_image_generation=True` to a Claude model, the flag is silently ignored and a warning is logged. Image input (vision) works as usual.
+
+### Working with generated images — `OutputImage`
+
+Generated images live in `agent.images` as `OutputImage` instances:
+
+```python
+img = agent.images[0]
+img.bytes        # raw image bytes
+img.mime_type    # e.g. "image/png"
+img.save("out.png")
+img.to_base64()
+```
+
+You can also extract images directly from any `AIMessage`:
+
+```python
+from dm_aioaiagent import OutputImage
+images = OutputImage.extract_from(response_message)  # list[OutputImage]
+```
+
+### Image memory modes
+
+Images in `agent.memory_messages` (the conversation history sent to the LLM on each turn) and in `agent.images` (the property exposing AI-generated images) follow the `image_memory_mode` constructor argument:
+
+| Mode | Memory (history) | `agent.images` |
+|---|---|---|
+| `keep_last` *(default)* | last user-image kept; last AI-image kept; older → `[image]` / `[generated image]` placeholder | last AI-image kept; replaced when a new one arrives |
+| `drop` | every image (user + AI) becomes a placeholder right after the turn | only the AI-image of the **current** turn (then wiped on the next call) |
+| `keep_all` | nothing is stripped — full multimodal history | every AI-image accumulates |
+
+```python
+agent = DMAIAgent(model="gpt-4o-mini", image_memory_mode="keep_last")
+agent.run_messages([InputImage.from_file("photo.png", text="Describe.")])
+agent.run("What colour was dominant?")  # answers based on the image
+```
+
+`agent.clear_memory_messages()` clears both `memory_messages` and `images`.
+
+> Only **AI-generated** images populate `agent.images`. Images you upload via `InputImage` go into history per the rules above but are not exposed on the `images` property.
+
+### `agent.as_tool()`
+
+Wrap any agent as a `StructuredTool` so a *parent* agent can call it like any other tool — the basis for multi-agent composition. Default name is derived from `agent_name` (lowercased, non-alphanumerics replaced with `_`); `description` is required.
+
+```python
+from dm_aioaiagent import DMAIAgent
+
+# specialised image agent
+image_agent = DMAIAgent(
+    agent_name="image_drawer",
+    model="google_genai:gemini-2.5-flash-image",
+    enable_image_generation=True,
+)
+
+# chat agent that delegates drawing to the image agent
+chat_agent = DMAIAgent(
+    model="google_genai:gemini-2.5-flash",
+    tools=[image_agent.as_tool(description="Generates an image from a text prompt.")],
+)
+
+chat_agent.run("Hi! Please draw a small red square.")
+# the chat agent picks the tool, the image agent draws, image lands in image_agent.images
+image_agent.images[0].save("out.png")
+```
+
+The async client (`DMAioAIAgent.as_tool`) returns a tool with both `func` and `coroutine` set, so it can be invoked from sync or async parent agents.

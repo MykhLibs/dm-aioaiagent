@@ -9,27 +9,13 @@ AfterToolCallCallback = Callable[[str, dict, str], None]
 AsyncBeforeToolCallCallback = Callable[[str, dict], Coroutine[Any, Any, None]]
 AsyncAfterToolCallCallback = Callable[[str, dict, str], Coroutine[Any, Any, None]]
 
-class ImageMessageTextItem(TypedDict):
-    type: Literal['text']
-    text: str
-
-
-class ImageMessageImageItem(TypedDict):
-    type: Literal['image_url']
-    image_url: dict
-
-
-class ImageMessage(TypedDict):
-    role: Literal["user"]
-    content: list[Union[ImageMessageTextItem, ImageMessageImageItem]]
-
 
 class TextMessage(TypedDict):
     role: Literal["user", "ai"]
     content: str
 
 
-InputMessage = Union[TextMessage, ImageMessage, BaseMessage]
+InputMessage = Union[TextMessage, BaseMessage]
 
 
 class State(TypedDict):
