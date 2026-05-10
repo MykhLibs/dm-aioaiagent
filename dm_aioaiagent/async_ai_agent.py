@@ -27,7 +27,7 @@ class DMAioAIAgent(DMAIAgent):
 
         last_message = new_messages[-1]
         if isinstance(last_message, AIMessage):
-            return last_message.content
+            return self._extract_text(last_message)
         return last_message
 
     async def run_messages(

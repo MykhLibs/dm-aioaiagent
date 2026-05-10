@@ -84,8 +84,17 @@ class DMAIAgent:
 
         last_message = new_messages[-1]
         if isinstance(last_message, AIMessage):
-            return last_message.content
+            return self._extract_text(last_message)
         return last_message
+
+    @staticmethod
+    def _extract_text(message: AIMessage) -> str:
+        # AIMessage.content may be a plain string (legacy) or a list of standard
+        # v1 content blocks (multimodal). For non-string content collect every
+        # text block; if there are none, return empty string.
+        if isinstance(message.content, str):
+            return message.content
+        return "".join(b["text"] for b in message.content_blocks if b.get("type") == "text")
 
     def run_messages(
         self,
